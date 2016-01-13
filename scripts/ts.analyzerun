@@ -1,0 +1,161 @@
+#!/usr/bin/env python
+
+"""
+This is a per-run data analysis script for cxij8816, similar to what users
+would have to write/modify to do their analysis. We should aim to make this
+as simple as possible.
+
+Here is a quick list of things to do, not in any order:
+-- geometry interface (currently hidden in a file)
+-- small data handler
+-- radial averagers are a mess (put in skbeam)
+
+TJL 1/13/16
+"""
+
+import argparse
+from mpi4py import MPI
+
+import psana
+import numpy as np
+
+# tjl note to self: everything in "algorithms" should be made avail to all expts
+from timescans import algorithms
+from timescans import visualization
+from timescans import sd
+
+# ---- parse args
+parser = argparse.ArgumentParser(description='Analyze a single run')
+parser.add_argument('-r', '--run', type=int,
+                    help='the run number')
+parser.add_argument('-n', '--no-viz', type=bool, action='store_true',
+                    default=False, help='disable visualization')
+args = parser.parse_args()
+
+
+# ---- MPI setup
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
+size = comm.Get_size()
+
+
+# ---- some experiment-specific stuff
+LASER_ON_EVR = 42    # random guess
+XRAY_ON_EVR  = 120   # random guess
+N_BINS       = 101
+UPDATE_FREQ  = 100   # units: shots processed per core
+
+
+
+# ---- get calibration data, create detectors
+ds = psana.DataSource('exp=cxij8816:run=%d:dir=/reg/d/ffb/cxi/cxij8816:smd:live')
+
+cspad_det = psana.Detector('ds1', ds.env())
+evr       = psana.Detector('evr0', ds.env())
+tt_opal   = psana.Detector('TSS_OPAL', ds.env())
+las_stg   = psana.Detector('CXI:LAS:MMN:06.RBV', ds.env())
+
+ttOptions = TimeTool.AnalyzeOptions(
+    get_key='TSS_OPAL',
+    eventcode_nobeam=162,
+    calib_poly='0 1 0',
+    sig_roi_x='0 1023',
+    sig_roi_y='425 724',
+    ref_avg_fraction=0.5)
+ttAnalyze = TimeTool.PyAnalyze(ttOptions)
+
+geometry_h5 = h5py.File('/reg/d/psdm/cxi/cxij8816/res/geometry/current.h5')
+q_values    = np.array(geometry_h5['/q_values'])
+phi_values  = np.array(geometry_h5['/phi'])
+mask        = np.array(geometry_h5['/mask'])
+geometry_h5.close()
+
+ra = algorithms.RadialAverager(q_values, mask, n_bins=N_BINS)
+small_data = sd.CsvSmallData('/reg/d/psdm/cxi/cxij8816/res/stats/run%4d.csv')
+
+
+# ---- get the data from the FFB
+laser_on_sum  = np.zeros(N_BINS)
+laser_off_sum = np.zeros(N_BINS)
+n_laser_on    = np.array([0])
+n_laser_off   = np.array([0])
+event_info_list = []
+
+
+for nevent, evt in enumerate(ds.events()):
+
+
+    # different ranks look at different events
+    if nevent % size != rank: continue
+
+    cspad_img = cspad_det.calib(evt) # gets the calibrated img
+    xray_on   = (XRAY_ON_EVR in evr(evt))
+    laser_on  = (LASER_ON_EVR in evr(evt))
+
+    ttdata = ttAnalyze.process(evt)
+
+    evtId = evt.get(psana.EventId)
+    event_info = { 'index'    : nevent,
+                   'fdcl'     : evtId.fiducials()
+                   'time_s'   : evtId.time()[0],
+                   'time_ns'  : evtId.time()[1],
+                   'xray_on'  : xray_on,
+                   'laser_on' : laser_on,
+                   'tt_pos'   : ttdata.position_pixel(),
+                   'tt_amp'   : ttdata.amplitude(),
+                   'tt_nxamp' : ttdata.nxt_amplitude(),
+                   'las_stg'  : las_stg(evt),
+                   'delta_t'  : 0.0 } # todo this one obv needs work :)
+
+    event_info_list.append(event_info)
+
+    # this part replace in MPI implementation
+    if xray_on and (cspad_img is not None):
+
+        cspad_img[cspad_img < 20.0] = 0.0
+        rad_avg = ra(cspad_img)
+
+        if LASER_ON_EVR in evr(evt):
+            laser_on_sum  += rad_avg
+            n_laser_on    += 1
+        else:
+            laser_off_sum += rad_avg
+            n_laser_off   += 1
+
+
+    # >> every so often, the master pauses to gather all the
+    # analyzed data, write it to disk, and send it to lightning
+
+    if (nevent * rank) % UPDATE_FREQ == 0: # dbl check logic
+
+        laser_on_sum_agg = comm.Gather(laser_on_sum, root=0)
+        n_laser_on_agg   = comm.Gather(n_laser_on, root=0)
+
+        laser_off_sum_agg = comm.Gather(laser_off_sum, root=0)
+        n_laser_off_agg   = comm.Gather(n_laser_off, root=0)
+
+        info_agg = comm.gather(event_info_list, root=0)
+
+
+        # if we are master
+        if rank == 0:
+
+            # compute the values of interest
+            laser_on_sum_agg  = np.sum(laser_on_sum_agg, axis=1)
+            n_laser_on_agg    = np.sum(n_laser_on_agg)
+            laser_off_sum_agg = np.sum(laser_off_sum_agg, axis=1)
+            n_laser_off_agg   = np.sum(n_laser_off_agg)
+        
+            # write them to disk
+            small_data.append(info_agg)
+
+            # and send for visualization
+            if not args.no_viz:
+                pass
+                #visualization.las_on_v_off(n_laser_on_agg, laser_on_sum_agg,
+                #                           n_laser_off_agg, laser_off_sum_agg)
+
+ 
+MPI.Finalize()
+
+
