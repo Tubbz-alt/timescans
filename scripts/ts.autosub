@@ -1,0 +1,55 @@
+#!/usr/bin/env python
+
+import os
+import re
+import time
+import subprocess
+from glob import glob
+
+hutch = 'cxi'
+expt  = 'cxij8816'
+
+XTC_DIR      = '/reg/d/ffb/%s/%s/xtc' % (hutch, expt)
+STATS_DIR    = '/reg/d/psdm/%s/%s/res/stats' % (hutch, expt)
+
+
+def submit_job(bsub_command_str, queue='psfehprioq'):
+
+    p = subprocess.check_call(['bsub', '-q %s' % queue, bsub_command_str],
+                              stdout=subprocess.PIPE)
+    if not p == 0:
+        print "bsub returned non-zero exit code: there was an error with your job submission!"
+    return
+
+
+while True:
+
+    # check to make sure we don't have >6 jobs submitted...
+    nj = subprocess.check_call(['bjobs 2>/dev/null | wc -l'], shell=True)
+    if nj > 7:
+         time.sleep(60)
+         continue
+
+    new_runs = []
+    xtcs = glob(os.path.join(XTC_DIR, '*.xtc'))
+
+    for xtc in xtcs:
+        run = int( re.search('-r(\d+)-', xtc).group(1) )
+        if not os.path.exists( os.path.join(STATS_DIR, 'run%04d.csv' % run) ):
+            if run not in new_runs:
+                new_runs.append(run)
+
+    if len(new_runs) > 0:
+        print 'Processing new runs: %s' % (' '.join([str(r) for r in new_runs]))
+        for r in new_runs:
+            try:
+                submit_job('mpirun -n 12 ts.analyzerun -r %d' % int(r))
+            except Exception as e:
+                print e
+
+    time.sleep(60)
+
+
+
+
+
