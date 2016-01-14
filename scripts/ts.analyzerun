@@ -7,22 +7,22 @@ as simple as possible.
 
 Here is a quick list of things to do, not in any order:
 -- geometry interface (currently hidden in a file)
--- small data handler
 -- radial averagers are a mess (put in skbeam)
+-- everything in timescans.algorithms should be somewhere in psana/skbeam
 
 TJL 1/13/16
 """
 
 import argparse
+import csv
 from mpi4py import MPI
 
 import psana
 import numpy as np
 
-# tjl note to self: everything in "algorithms" should be made avail to all expts
 from timescans import algorithms
 from timescans import visualization
-from timescans import sd
+
 
 # ---- parse args
 parser = argparse.ArgumentParser(description='Analyze a single run')
@@ -71,10 +71,17 @@ mask        = np.array(geometry_h5['/mask'])
 geometry_h5.close()
 
 ra = algorithms.RadialAverager(q_values, mask, n_bins=N_BINS)
-small_data = sd.CsvSmallData('/reg/d/psdm/cxi/cxij8816/res/stats/run%4d.csv')
 
 
-# ---- get the data from the FFB
+# ---- setup buffers to store data
+if rank == 0:
+    smd_file = open('/reg/d/psdm/cxi/cxij8816/res/stats/run%04d.csv' % args.run)
+    fieldnames = ['index', 'fdcl', 'time_s', 'time_ns',
+                   'xray_on', 'laser_on',
+                   'tt_pos', 'tt_amp', 'tt_nxamp', 'las_stg', 'delta_t']
+    small_data = csv.DictWriter(csvfile, fieldnames=fieldnames)
+    small_data.writeheader()
+
 laser_on_sum  = np.zeros(N_BINS)
 laser_off_sum = np.zeros(N_BINS)
 n_laser_on    = np.array([0])
@@ -82,6 +89,7 @@ n_laser_off   = np.array([0])
 event_info_list = []
 
 
+# ---- get the data from the FFB
 for nevent, evt in enumerate(ds.events()):
 
 
@@ -128,6 +136,7 @@ for nevent, evt in enumerate(ds.events()):
 
     if (nevent * rank) % UPDATE_FREQ == 0: # dbl check logic
 
+        # first gather ...
         laser_on_sum_agg = comm.Gather(laser_on_sum, root=0)
         n_laser_on_agg   = comm.Gather(n_laser_on, root=0)
 
@@ -135,10 +144,15 @@ for nevent, evt in enumerate(ds.events()):
         n_laser_off_agg   = comm.Gather(n_laser_off, root=0)
 
         info_agg = comm.gather(event_info_list, root=0)
+        event_info_list = [] # reset this so it doesn't baloon
 
 
         # if we are master
         if rank == 0:
+
+            # write small data to disk
+            small_data.writerows(info_agg)
+            dts = [ e['delta_t'] for e in info_agg ]
 
             # compute the values of interest
             laser_on_sum_agg  = np.sum(laser_on_sum_agg, axis=1)
@@ -146,16 +160,14 @@ for nevent, evt in enumerate(ds.events()):
             laser_off_sum_agg = np.sum(laser_off_sum_agg, axis=1)
             n_laser_off_agg   = np.sum(n_laser_off_agg)
         
-            # write them to disk
-            small_data.append(info_agg)
-
             # and send for visualization
             if not args.no_viz:
                 pass
                 #visualization.las_on_v_off(n_laser_on_agg, laser_on_sum_agg,
                 #                           n_laser_off_agg, laser_off_sum_agg)
 
- 
+
+smd_file.close() 
 MPI.Finalize()
 
 
