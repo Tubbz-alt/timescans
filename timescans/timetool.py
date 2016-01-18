@@ -10,6 +10,10 @@ import epics
 import time
 import pydaq
 
+CURSOR_UP_ONE = '\x1b[1A'
+ERASE_LINE = '\x1b[2K'
+
+
 # create a global DAQ instance for the app
 DAQ = pydaq.Control('cxi-daq', 4) # host, instance
 
@@ -49,13 +53,15 @@ class Timetool(object):
                  t0_pv_name,
                  laser_lock_pv_name):
                  
-        print laser_delay_pv_name    
         self._laser_delay        = epics.PV(laser_delay_pv_name)
         self._tt_stage_position  = epics.PV(tt_stage_position_pv_name)
         self._t0                 = epics.PV(t0_pv_name)
         self._laser_lock         = epics.PV(laser_lock_pv_name)
 
-        time.sleep(0.1)
+        self.tt_travel_offset    = 0.0
+        self.tt_fit_coeff        = np.array([ 0.0, 1.0, 0.0 ])
+
+        time.sleep(0.1) # time for PVs to connect
         for pv in [self._laser_delay, self._tt_stage_position,
                    self._t0, self._laser_lock]:
             if not pv.connected:
@@ -65,22 +71,56 @@ class Timetool(object):
         
         
     @property
-    def measurable_window(self):
+    def tt_window(self):
         """
         Returns the time delay window (reliably) measurable in the current 
         position.
         """
-        return
+
+        # currently let's just say +/- 300 fs, to be replaced --TJL
+        # could be fancy and take an error tol arg, etc etc
+        mm_travel = self._tt_stage_position.value
+        delay_in_ns = mm_to_ns(mm_travel + self.tt_travel_offset)
+        window = (delay_in_ns - 300.0e-6, delay_in_ns + 300.0e-6)
+
+        return window
         
         
     @property
-    def motor_position(self):
-        return self._tt_stage_position.value
+    def current_delay(self):
+        delay = self._laser_delay.value
+        window = self.tt_window
+        if (delay < window[0]) or (delay > window[1]):
+            print "WARNING: TT stage out of range for delay!"
+        return delay
     
         
-    def move_for_delay(self, delay_in_fs):
+    def set_delay(self, delay_in_ns):
+        """
+        Move both the laser delay and the TT stage for a particular
+        delay.
+        """
+
+        old_delay = self._laser_delay.value
+        old_tt_pos = self._tt_stage_position.value
+
+        tt_pos = self._tt_pos_for_delay(delay)
+
+        self._laser_delay.put(delay)
+        self._tt_stage_position.put(tt_pos)
+
+        print "LAS delay: %f --> %f" % (old_delay, delay)
+        print "TT  stage: %f --> %f" % (old_tt_pos, tt_pos)
         
         return
+
+
+    def _tt_pos_for_delay(self, delay_in_ns):
+
+        mm_travel = ns_to_mm(delay_in_ns)
+        tt_position = mm_travel + self.tt_travel_offset
+
+        return tt_position
         
         
     def calibrate(self):
@@ -88,33 +128,55 @@ class Timetool(object):
         Calibrate the pixel-to-fs conversion.
         """
 
-        nevents_per_timestep = 100 # figure out
-        times = [1,2,3] # FIGURE THIS OUT!
+        # 120 evts/pt | -1 ps to 1 ps, 100 fs window
+        nevents_per_timestep = 120
+        times = self.laser_delay + np.linspace(-0.001, 0.001, 21)
 
         run = scan_times(times, nevents_per_timestep)
 
         # >>> now fit the calibration
         #     if we can launch an external process...
 
-        # >>> 
+        # >>> make a plot!
 
-    def scan_range(t1, t2, resolution, nevents_per_timestep=100):
+        return
+
+
+    def scan_range(t1, t2, resolution, nevents_per_timestep=100,
+                   randomize=False, repeats=1):
 
         times = np.arange(t1, t2 + resolution, resolution)
 
         print "scanning from %f --> %f" % (times.min(), times.max())
-        print "\t%d bins \\ %f fs between bins \\ %d events per time" % ( len(times),
+        print "\t%d bins \\ %f ns between bins \\ %d events per time" % ( len(times),
                                                                           resolution,
                                                                           nevents_per_timestep )
-        scan_times(times, nevents_per_timestep)    
+        scan_times(times, nevents_per_timestep=nevents_per_timestep,
+                   randomize=randomize, repeats=repeats)
+ 
         return
 
 
-    def scan_times(self, times_in_fs, nevents_per_timestep=100):
+    def scan_times(self, times_in_ns, nevents_per_timestep=100,
+                   randomize=False, repeats=1):
         """
+        Parameters
+        ----------
+        times_in_ns : np.ndarray (or list)
+            A list of timepoints to scan
+
+        nevents_per_timestep : int
+            The number of events to measure at each timepoint
+
+        randomize : bool
+            If true, the order in which the timepoints are visited will be
+            randomly scrambled (good for removing systematic errors)
+
+        repeats : int
+            How many times to repeat each timepoint
         """
 
-        print "scanning %d timepoints, %d events per timepoint" % (len(times_in_fs),
+        print "scanning %d timepoints, %d events per timepoint" % (len(times_in_ns),
                                                                    nevents_per_timestep)
 
 
@@ -123,7 +185,7 @@ class Timetool(object):
         #     to run and what to vary. then we launch an external thread to do
         #     that.
 
-        daq_config = { 'record' : True, # CHANGEME
+        daq_config = { 'record' : True,
                        'events' : nevents_per_timestep,
                        'controls' : [ (self._laser_delay.pvname,
                                        self._laser_delay.value) ],
@@ -132,20 +194,29 @@ class Timetool(object):
         DAQ.configure(**daq_config)
         print "> daq configured"
 
-        laser_positions = times_in_fs
-        for cycle in range(len(laser_positions)):
-            print " --> cycle %d / laser delay %f" % (cycle, laser_positions[cycle])
-            
-            self._laser_delay.put( laser_positions[cycle] )
-            # >> move TT stage as well!
-            # manually wait until move done
+        for cycle, delay in enumerate(times_in_ns):
 
-            DAQ.begin( controls=[( self._laser_delay.pvname, laser_positions[cycle] )] )
+            new_tt_pos = self._tt_pos_for_delay(delay)
+            print " --> cycle %d / laser delay %f ns / tt stage: %f" % (cycle, delay, new_tt_pos)
+            
+            self._laser_delay.put(delay)
+            self._tt_stage_position.put(new_tt_pos)
+
+            # wait until PVs reach the value we want
+            while ((self._laser_delay.value != delay) or \
+                   (self._tt_stage_position.value != new_tt_pos)):
+                print "\t\t LAS delay: %f --> %f" % (self._laser_delay.value, delay)
+                print "\t\t TT  stage: %f --> %f" % (self._tt_stage_position.value, new_tt_pos)
+                print CURSOR_UP_ONE + ERASE_LINE
+            
+            ctrls = [( self._laser_delay.pvname,       delay )
+                     ( self._tt_stage_position.pvname, new_tt_pos )]
+            DAQ.begin(controls=ctrls)
             DAQ.end()
 
-        print "> finished" 
+        print "> finished, daq released" 
 
-        return 
+        return DAQ.runnumber()
 
 
 def analyze_calibration_run(exp, run, las_stg_pvname, eventcode_nobeam=162):
@@ -201,6 +272,6 @@ if __name__ == '__main__':
                 'LAS:FS5:VIT:PHASE_LOCKED' )       # laser_lock_pv_name
 
      tt = Timetool(*cxi_pvs)
-     times_in_fs = [ -0.001, 0.0, 0.001 ]
-     tt.scan_times(times_in_fs, 1000)
+     times_in_ns = [ -0.001, 0.0, 0.001 ]
+     tt.scan_times(times_in_ns, 1000)
 
