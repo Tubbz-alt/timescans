@@ -11,7 +11,11 @@ import time
 import epics
 import subprocess
 import sys
-import pydaq
+
+try:
+    import pydaq
+except:
+    daq = None
 
 import numpy as np
 
@@ -209,10 +213,10 @@ class Timetool(object):
         print "Calibrating..."
 
         # 120 evts/pt | -1 ps to 1 ps, 100 fs window
-        nevents_per_timestep = 120
-        times = self.laser_delay + np.linspace(-0.001, 0.001, 21)
+        nevents_per_timestep = 12
+        times = np.linspace(-0.001, 0.001, 21)
 
-        run = scan_times(times, nevents_per_timestep)
+        run = self.scan_times(times, nevents_per_timestep)
 
         # >>> now fit the calibration
         #     if we can launch an external process...
@@ -232,8 +236,9 @@ class Timetool(object):
             result = ssh.stdout.readlines()
             if result == []:
                 error = ssh.stderr.readlines()
+                print error
                 print "Automatic submission of job analyzing run %d failed" % run
-                print "Run 'ts.analyze_calib_run -r %d' on any psana machine" % run
+                print "Run '%s' on any psana machine" % cmd
             else:
                 print '> ts.analyze_calib_run job submitted to psana queue'
                 print '> \t', result
@@ -337,107 +342,13 @@ class Timetool(object):
         return self.daq.runnumber()
 
 
-def fit_errors(x, y, y_hat, bin_size):
-    """
-    Compute errors for fit both 'locally' and 'globally'.
-
-    Specifically, the R^2 statistic is computed as usual (global).
-    Additionally, the data are binned across the domain (x > bin_size)
-    and for each bin an RMSE is computed.
-
-    Parameters
-    ----------
-    x, y, y_hat : np.ndarray
-       Equal-length 1D arrays of the domain, range, and prediction
-       respectively.
-
-    bin_size : float
-       The resolution in which to bin `x` for local error computation.
-
-
-    Returns
-    -------
-    r_sq : float
-        The usual R^2 statistic.
-
-    rmes : np.ndarray
-        A 2D array of local errors. The first column is the bin center of
-        mass (mean of x's in the bin), the second column is the prediction
-        averaged across that bin (mean of y_hat's in the bin), the final
-        column is the RMSE for the prediction in that bin.
-
-    Example
-    -------
-    >>> r_sq, rmes = fit_errors(x, y, y_hat)
-
-    >>> plot(x,y,'.')
-    >>> plot(x,y_hat,'-')
-    
-    >>> plot(rmes[:,0],rmes[:,1] - rmes[:,2],'k-')
-    >>> plot(rmes[:,0],rmes[:,1] + rmes[:,2],'k-')
-    """
-
-    ssq = lambda x : np.sum(np.square(x))
-    
-    # global R^2
-    ssreg = ssq(y_hat - np.mean(y))
-    sstot = ssq(y     - np.mean(y))
-    r_sq = ssreg / sstot
-    
-    # per-bin RME
-    bins = np.arange(x.min(), x.max()+bin_size*2, bin_size)
-    assign = np.digitize(x, bins)
-    uq = np.unique(assign)
-    rmes = np.zeros((len(uq), 3))
-    
-    # get all x's that fall in a bin & compute rme
-    for i,u in enumerate(uq):
-        rmes[i,0] = np.mean(x[idx])
-        rmes[i,1] = np.mean(y_hat[idx])
-        rmes[i,2] = np.sqrt(ssq( y[idx] - y_hat[idx] ) / np.sum(idx) )
-    
-    return r_sq, rmes
-
-
-def analyze_calibration_run(exp, run, las_delay_pvname, eventcode_nobeam=162):
-    """
-    Analyze a run where the timetool camera is fixed but the laser delay
-    changes by a known amount in order to calibrate the TT camera pixel-
-    time conversion.
-    """
-
-    import psana
-
-    ds = psana.DataSource('exp=%s:run=%d:dir=/reg/d/ffb/%s/%s:smd:live'
-                          '' % (exp, run, exp[:3], exp))
-
-    las_stg   = psana.Detector(las_stg_pvname, ds.env())
-    
-
-
-    # loop over events and pull out (delay, pixel) tuples
-    delay_pxl_data = []
-    for evt in ds.events():
-
-        las_stg_pos = las_stg(evt)
-        ttdata = ttAnalyze(evt)
-
-        # >>> TJL note, may want to perform some checks on e.g. TT peak heights, etc
-        delay_pxl_data.append([las_stg_pos, ttdata.position_pixel()])
-        
-
-    # perform a regression
-    # >>> TJL note, can we be smart about setting the other TT params?
-
-    # push results upstream to DAQ config
-
-    # save results to calib dir
-
-    return a, b, c, r_sq, jpg
 
 
 # --------------
 # debugging
+
+
+
 
 def _timetool_smoketest():
 
@@ -453,6 +364,8 @@ def _timetool_smoketest():
      #times_in_ns = [ -0.001, 0.0, 0.001 ]
      #print tt.scan_times(times_in_ns, 100, randomize=True, repeats=2)
      #print tt.scan_range(-0.001, 0.001, 0.001)
+
+     tt.calibrate()
 
      return
 

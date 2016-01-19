@@ -12,16 +12,14 @@ import timescans
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-e', '--exp', help='experiment ID (e.g. xpptut15)')
-parser.add_argument('-r', '--run', help='run number')
+parser.add_argument('-r', '--run', help='run number', type=int)
 parser.add_argument('-l', '--las', help='laser delay PV')
-parser.add_argument('-n', '--nobeam', type=int,
-                    help='Dropped x-ray beam event code')
+#parser.add_argument('-n', '--nobeam', type=int,
+#                    help='Dropped x-ray beam event code')
 args = parser.parse_args()
 
 
 timescans.analyze_calibration_run(args.exp,
                                   args.run,
-                                  args.las,
-                                  eventcode_nobeam=args.nobeam)
-
+                                  args.las)
 
