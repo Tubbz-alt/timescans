@@ -20,16 +20,13 @@ ERASE_LINE = '\x1b[2K'
 
 DEBUG = True
 
-# create a global DAQ instance for the app
-#DAQ = pydaq.Control('cxi-daq', 4) # host, instance
-
 
 def mm_to_ns(path_length):
     """
     Lasers go at the speed of light!
     """
     c = 299792458.0 # m / s
-    meters  = path_length * 1000.0
+    meters  = path_length / 1000.0
     time_s  = meters / c
     time_ns = time_s * 1.0e9
     return time_ns
@@ -90,7 +87,7 @@ class Timetool(object):
     def from_rc(cls):
 
         rc_path = os.path.join(os.environ['HOME'], '.timescanrc')
-        print "initialized from %s" % rc_path
+        print "\ninitialized from %s" % rc_path
 
         settings = {}
         with open(rc_path, 'r') as f:
@@ -98,6 +95,7 @@ class Timetool(object):
                 k,v = [x.strip() for x in line.split('=')]
                 print '\t%s --> %s' % (k,v)
                 settings[k] = v
+        print ""
 
         try:
             inst = cls(settings['daq_host'],
@@ -156,7 +154,8 @@ class Timetool(object):
         # currently let's just say +/- 300 fs, to be replaced --TJL
         # could be fancy and take an error tol arg, etc etc
         mm_travel = self._tt_stage_position.value
-        delay_in_ns = mm_to_ns(mm_travel + self.tt_travel_offset)
+        print '^^^^^^^', mm_travel- self.tt_travel_offset
+        delay_in_ns = mm_to_ns(mm_travel - self.tt_travel_offset)
         window = (delay_in_ns - 300.0e-6, delay_in_ns + 300.0e-6)
 
         return window
@@ -167,7 +166,7 @@ class Timetool(object):
         delay = self._laser_delay.value
         window = self.tt_window
         if (delay < window[0]) or (delay > window[1]):
-            print "WARNING: TT stage out of range for delay!"
+            print "*** WARNING: TT stage out of range for delay!"
         return delay
     
         
@@ -249,7 +248,7 @@ class Timetool(object):
         return
 
 
-    def scan_range(t1, t2, resolution, nevents_per_timestep=100,
+    def scan_range(self, t1, t2, resolution, nevents_per_timestep=100,
                    randomize=False, repeats=1):
 
         times = np.arange(t1, t2 + resolution, resolution)
@@ -258,8 +257,8 @@ class Timetool(object):
         print "\t%d bins \\ %f ns between bins \\ %d events per time" % ( len(times),
                                                                           resolution,
                                                                           nevents_per_timestep )
-        scan_times(times, nevents_per_timestep=nevents_per_timestep,
-                   randomize=randomize, repeats=repeats)
+        self.scan_times(times, nevents_per_timestep=nevents_per_timestep,
+                        randomize=randomize, repeats=repeats)
  
         return
 
@@ -288,7 +287,7 @@ class Timetool(object):
         print "SCAN REQUESTED\n"
 
         if (record is False) or DEBUG:
-            print "WARNING: not recording!"
+            print "*** WARNING: not recording!"
 
         times_in_ns = np.repeat(times_in_ns, repeats)
         print "> scanning %d timepoints, %d events per timepoint" % (len(times_in_ns),
@@ -450,9 +449,10 @@ def _timetool_smoketest():
 
      print 'should be ~1.5 (mm):', tt._tt_pos_for_delay(0.01)
 
-     print 'test scan...'
-     times_in_ns = [ -0.001, 0.0, 0.001 ]
-     print tt.scan_times(times_in_ns, 100, randomize=True, repeats=2)
+     #print 'test scan...'
+     #times_in_ns = [ -0.001, 0.0, 0.001 ]
+     #print tt.scan_times(times_in_ns, 100, randomize=True, repeats=2)
+     #print tt.scan_range(-0.001, 0.001, 0.001)
 
      return
 
