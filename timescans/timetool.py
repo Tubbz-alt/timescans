@@ -4,6 +4,27 @@
 For calibration: 20x steps of 100 fs spacing
 ~30 shots / time
 
+
+Example
+-------
+>>> # load defaul parameters for CXI from ~/.timescanrc
+>>> tt = Timetool.from_rc()
+     
+>>> # for a static run, this is useful for control
+>>> tt.set_delay(0.001)
+
+>>> # scan specific times, 100 shots/time, random order, 2 repeats
+>>> times_in_ns = [ -0.001, 0.0, 0.001 ]
+>>> tt.scan_times(times_in_ns, nevents_per_timestep=100, 
+                  randomize=True, repeats=2)
+
+>>> # or by (start, stop, step_size)
+>>> tt.scan_range(-0.001, 0.001, 0.001)
+
+>>> # run a calibration scan to determine pixel/fs conversion
+>>> # should launch an external job that updates the 
+>>> # DAQ config & psana calib directory
+>>> tt.calibrate()
 """
 
 import os
