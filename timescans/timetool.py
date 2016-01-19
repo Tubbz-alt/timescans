@@ -18,6 +18,7 @@ import numpy as np
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'
 
+DEBUG = True
 
 # create a global DAQ instance for the app
 #DAQ = pydaq.Control('cxi-daq', 4) # host, instance
@@ -38,7 +39,7 @@ def ns_to_mm(time):
     c = 299792458.0 # m / s
     sec = time * 1.0e-9
     meters = sec * c
-    mm = meters / 1000.0
+    mm = meters * 1000.0
     return mm
 
         
@@ -286,7 +287,7 @@ class Timetool(object):
         print "="*40
         print "SCAN REQUESTED\n"
 
-        if record is False:
+        if (record is False) or DEBUG:
             print "WARNING: not recording!"
 
         times_in_ns = np.repeat(times_in_ns, repeats)
@@ -317,17 +318,15 @@ class Timetool(object):
 
             new_tt_pos = self._tt_pos_for_delay(delay)
             print " --> cycle %d / laser delay %f ns / tt stage: %f" % (cycle, delay, new_tt_pos)
-            
-            self._laser_delay.put(delay)
-            self._tt_stage_position.put(new_tt_pos)
+           
+            if not DEBUG: 
+                self._laser_delay.put(delay)
+                self._tt_stage_position.put(new_tt_pos)
 
-            # wait until PVs reach the value we want
-            while ( (np.abs(self._laser_delay.value - delay) > 1e-9 ) or \
-                    (np.abs(self._tt_stage_position.value - new_tt_pos) > 1e-9) ):
-                #print "\t\t LAS delay: %f --> %f" % (self._laser_delay.value, delay)
-                #print "\t\t TT  stage: %f --> %f" % (self._tt_stage_position.value, new_tt_pos)
-                #print (CURSOR_UP_ONE + ERASE_LINE)*2,
-                time.sleep(0.001)
+                # wait until PVs reach the value we want
+                while ( (np.abs(self._laser_delay.value - delay) > 1e-9 ) or \
+                        (np.abs(self._tt_stage_position.value - new_tt_pos) > 1e-9) ):
+                    time.sleep(0.001)
             
             ctrls = [( self._laser_delay.pvname,       delay ),
                      ( self._tt_stage_position.pvname, new_tt_pos )]
@@ -471,6 +470,6 @@ def _rc_smoketest():
      tt2 = Timetool.from_rc()
 
 if __name__ == '__main__':
-    #_timetool_smoketest()
-    _rc_smoketest()
+    _timetool_smoketest()
+    #_rc_smoketest()
 
