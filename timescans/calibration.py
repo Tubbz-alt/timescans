@@ -89,7 +89,7 @@ def analyze_calibration_run(exp, run, las_delay_pvname, ffb=True):
     for i,evt in enumerate(ds.events()):
         # >>> TJL note, may want to perform some checks on e.g. TT peak heights, etc
         delay_pxl_data.append([ tt_edge(evt), las_dly(evt) ])
-        if i == 1000: break # debugging
+        #if i == 1000: break # debugging
         
     delay_pxl_data = np.array(delay_pxl_data)
     print "Analyzing %d events" % delay_pxl_data.shape[0]

@@ -1,7 +1,7 @@
 # init
 
 from timetool import Timetool
-from calibration import analyze_calibration_run
+#from calibration import analyze_calibration_run
 
 # below: draft that should go in ipython config
 #import os
