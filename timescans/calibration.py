@@ -1,5 +1,6 @@
 
 import numpy as np
+from matplotlib import pyplot as plt
 
 
 def fit_errors(x, y, y_hat, bin_size):
@@ -57,6 +58,7 @@ def fit_errors(x, y, y_hat, bin_size):
     
     # get all x's that fall in a bin & compute rme
     for i,u in enumerate(uq):
+        idx = (assign == u) # index of pts in bin
         rmes[i,0] = np.mean(x[idx])
         rmes[i,1] = np.mean(y_hat[idx])
         rmes[i,2] = np.sqrt(ssq( y[idx] - y_hat[idx] ) / np.sum(idx) )
@@ -64,7 +66,7 @@ def fit_errors(x, y, y_hat, bin_size):
     return r_sq, rmes
 
 
-def analyze_calibration_run(exp, run, las_delay_pvname):
+def analyze_calibration_run(exp, run, las_delay_pvname, ffb=True):
     """
     Analyze a run where the timetool camera is fixed but the laser delay
     changes by a known amount in order to calibrate the TT camera pixel-
@@ -73,33 +75,32 @@ def analyze_calibration_run(exp, run, las_delay_pvname):
 
     import psana
 
-    try:
+    if ffb:
         ds = psana.DataSource('exp=%s:run=%d:dir=/reg/d/ffb/%s/%s:smd:live'
                               '' % (exp, run, exp[:3], exp))
-    except:
+    else:
         ds = psana.DataSource('exp=%s:run=%d' % (exp, run))
 
     las_dly = psana.Detector(las_delay_pvname, ds.env())
     tt_edge = psana.Detector('CXI:TTSPEC:FLTPOS', ds.env())
-    
+
+    print 'analyzing shots...'    
     delay_pxl_data = []
     for i,evt in enumerate(ds.events()):
-        print i
         # >>> TJL note, may want to perform some checks on e.g. TT peak heights, etc
         delay_pxl_data.append([ tt_edge(evt), las_dly(evt) ])
-        if i == 50: break # debugging
+        if i == 1000: break # debugging
         
     delay_pxl_data = np.array(delay_pxl_data)
     print "Analyzing %d events" % delay_pxl_data.shape[0]
 
     # from docs >> fs_result = a + b*x + c*x^2, x is edge position
-    fit = np.polyfit(delay_pxl_data[:,0], delay_pxl_data[:,1], 3)
+    fit = np.polyfit(delay_pxl_data[:,0], delay_pxl_data[:,1], 2)
     c, b, a = fit
     p = np.poly1d(fit)
 
     r_sq, rmes = fit_errors(delay_pxl_data[:,0], delay_pxl_data[:,1], 
                             p(delay_pxl_data[:,1]), 0.0001)
-
 
     plt.figure()
     plt.plot(delay_pxl_data[:,0], delay_pxl_data[:,1], '.')
@@ -119,6 +120,6 @@ def analyze_calibration_run(exp, run, las_delay_pvname):
 
 
 if __name__ == '__main__':
-    analyze_calibration_run('cxik4516', 65, 'LAS:FS5:VIT:FS_TGT_TIME_OFFSET')
+    analyze_calibration_run('cxii2415', 65, 'LAS:FS5:VIT:FS_TGT_TIME_OFFSET', ffb=False)
     
 

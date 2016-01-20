@@ -19,6 +19,6 @@ setup(name='timescans',
       author_email="tjlane@slac.stanford.edu",
       description='time scan control',
       packages=["timescans"],
-      package_dir={"timescans": "trapdoor"},
+      package_dir={"timescans": "timescans"},
       scripts=[s for s in glob('scripts/*') if not s.endswith('__.py')],
       test_suite="test")
