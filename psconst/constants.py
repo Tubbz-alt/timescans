@@ -1,6 +1,41 @@
+
+import os
 import h5py
 import numpy
-import logging
+
+
+# new functions from TJ for happier, simplier times
+def calib_path(env, detector_type, detector_src, start, end='end', create_dir=True):
+    fn = "%s-%s.h5" % (start, end)
+    base = os.path.join(env.calibDir(), detector_type, detector_src)
+    if create_dir and not os.path.exists(base):
+        os.system('mkdir -p %s' % base)
+    return os.path.join(base, fn)
+
+
+def find_calib_file(env, detector_type, detector_src, run):
+    """
+    logic: choose calib with starting range closest to desired run, being
+           sure the range for that calib includes this run
+    """
+
+    basepath = os.path.join(env.calibDir(), detector_type, detector_src)
+
+    nearest = '0-end.data'
+    s_and_e = lambda s : s.split('.')[0].split('-')
+
+    for fn in os.listdir(basepath):
+        start, end = s_and_e(fn)
+        start = int(start)
+        end = 999999 if (end == 'end') else int(end)
+        if (start <= run) and (run <= end):
+            if start > int(s_and_e(nearest)[0]):
+                nearest = fn
+        else:
+            raise IOError('No valid calib file found for run: %d' % run)
+
+    return os.path.join(basepath, nearest)
+
 
 class ConstantsStore(object):
     def __init__(self,obj,file):
@@ -44,7 +79,7 @@ class ConstantsStore(object):
             if self.typeok(obj,name):
                 self.storevalue(obj,name)
             else:
-                logging.warning('Constants.py: variable "'+name+'" of type "'+type(obj).__name__+'" not supported')
+                print('Constants.py: variable "'+name+'" of type "'+type(obj).__name__+'" not supported')
 
 class ConstantsLoad(object):
     def __init__(self,file):
@@ -89,12 +124,22 @@ def save(file,obj):
     
     c = ConstantsStore(obj,file)
 
-if __name__ == "__main__":
-    ct =  { 'version' : 0,
-            'darkreferencepath':'hello',
-            'nb':12,
-            'subdict':{'first' : 1, 'second' : 'two','three' : 'bahahah'}
-            }
-    save('ConstTest.h5',ct)
-    data = load('ConstTest.h5')
-    print '***',data
+
+if __name__ == '__main__': 
+    from psana import *
+    import psconst
+
+    detector_type = 'timetool'
+    detector_src = 'cxitt_1'
+
+    ds = DataSource('exp=cxij8816:run=3')
+    fout = psconst.calib_path(ds.env(), detector_type, detector_src, 20, end='end')
+
+    subdict={'hello2':3,'junk2':'apple'}
+    writedict={'hello':1,'junk':'banana','dict2':subdict}
+    psconst.save(fout, writedict)
+
+    fin = psconst.find_calib_file(ds.env(), detector_type, detector_src, 30)
+    readdict = psconst.load(fin)
+    print 'write:', writedict, '-->', fout
+    print 'read:', fin, '-->', readdict
