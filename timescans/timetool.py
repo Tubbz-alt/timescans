@@ -241,35 +241,34 @@ class Timetool(object):
 
         # >>> now fit the calibration
         #     if we can launch an external process...
+        #     this is messy. in the future if data are available on teh local
+        #     machine that would be MUCH better!
         try:
 
-            cmd = "ts.analyze_calib_run -e %s -r %d -l %s -n %d" % (exp, run, 
-                                                                    self._laser_delay.pvname,
-                                                                    self.eventcode_nobeam)
+            # TJL note to self: these make the code CXI-specific... :(
+            python = "/reg/neh/operator/cxiopr/cxipy/bin/python"
+            script = "/reg/neh/operator/cxiopr/timescans/scripts/ts.analyze_calib_run"
+            args = "-e %s -r %d -l %s" % (exp, run, self._laser_delay.pvname)
+
+            cmd = "%s %s %s" % (python, script, args)
+            print "> Executing: %s" % cmd
+            print "> on a psana machine..."
             
             ssh = subprocess.Popen(["ssh", "-A", "psdev",
                                     "ssh", "-A", "psana",
-                                    "bsub", "-q", "psfehhiprioq"
-                                    ].append(cmd.split()),
+                                    ] + cmd.split(),
                                    shell=False,
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE)
-            result = ssh.stdout.readlines()
-            if result == []:
-                error = ssh.stderr.readlines()
-                print error
-                print "Automatic submission of job analyzing run %d failed" % run
-                print "Run '%s' on any psana machine" % cmd
-            else:
-                print '> ts.analyze_calib_run job submitted to psana queue'
-                print '> \t', result
+
+            for line in ssh.stdout.readlines() + ssh.stderr.readlines():
+                print '\t* ' + line.strip()
 
         except:
             print "Automatic submission of job analyzing run %d failed" % run
-            print "Run 'ts.analyze_calib_run -r %d' on any psana machine" % run
-
-        # >>> monitor that job for completion
-
+            print "Run:"
+            print "\t", cmd
+            print "on any psana machine"
 
         return
 
