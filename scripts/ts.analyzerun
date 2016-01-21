@@ -50,15 +50,16 @@ UPDATE_FREQ   = 100   # units: shots processed per core
 
 
 # ---- get calibration data, create detectors
-ds = psana.DataSource('exp=cxij8816:run=%d:dir=/reg/d/ffb/cxi/cxij8816:smd:live' % args.run)
+#ds = psana.DataSource('exp=cxij8816:run=%d:dir=/reg/d/ffb/cxi/cxij8816/xtc:smd:live' % args.run)
+ds = psana.DataSource('exp=cxij8816:run=%d' % args.run)
 
-cspad_det = psana.Detector('ds1', ds.env())
-evr       = psana.Detector('evr0', ds.env())
-las_stg   = psana.Detector('CXI:LAS:MMN:06.RBV', ds.env())
+cspad_det = psana.Detector('DscCsPad', ds.env())
+evr       = psana.Detector('NoDetector.0:Evr.0', ds.env())
+las_stg   = psana.Detector('LAS:FS5:VIT:FS_TGT_TIME_DIAL', ds.env())
 
 tt_pos    = psana.Detector('CXI:TTSPEC:FLTPOS', ds.env())
 tt_amp    = psana.Detector('CXI:TTSPEC:AMPL', ds.env())
-tt_nx_amp = psana.Detector('CXI:TTSPEC:AMPLNXT', ds.env())
+tt_fwhm   = psana.Detector('CXI:TTSPEC:FLTPOSFWHM', ds.env())
 tt_time   = psana.Detector('CXI:TTSPEC:FLTPOS_PS', ds.env())
 
 # DEAL WITH THIS
@@ -68,7 +69,7 @@ tt_time   = psana.Detector('CXI:TTSPEC:FLTPOS_PS', ds.env())
 #mask        = np.array(geometry_h5['/mask'])
 #geometry_h5.close()
 
-q_values = np.random.randn((32, 185, 388))
+q_values = np.random.randn(32, 185, 388)
 mask     = np.ones((32, 185, 388), dtype=np.int32)
 
 ra = algorithms.RadialAverager(q_values, mask, n_bins=N_BINS)
@@ -76,16 +77,17 @@ ra = algorithms.RadialAverager(q_values, mask, n_bins=N_BINS)
 
 # ---- setup buffers to store data
 if rank == 0:
-    smd_file = open('/reg/d/psdm/cxi/cxij8816/res/stats/run%04d.csv' % args.run)
+    smd_file = open('/reg/d/psdm/cxi/cxij8816/res/stats/run%04d.csv' % args.run, 'w')
     fieldnames = ['index', 'fdcl', 'timestamp_s', 'timestamp_ns',
                    'xray_on', 'laser_on',
-                   'tt_pos', 'tt_amp', 'tt_nxamp', 'las_stg', 'delta_t_ps']
-    small_data = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                   'tt_pos', 'tt_amp', 'tt_fwhm', 'las_stg', 'delta_t_ps']
+    small_data = csv.DictWriter(smd_file, fieldnames=fieldnames, extrasaction='ignore')
     small_data.writeheader()
+    print small_data.fieldnames
 
     if not args.no_viz:
         from timescans import visualization as viz
-        rpt = RunPlots(args.run, q_values)
+        rpt = viz.RunPlots(args.run, q_values)
 
 
 laser_on_sum  = np.zeros(N_BINS)
@@ -96,15 +98,20 @@ event_info_list = []
 
 
 # ---- get the data from the FFB
+print 'iterating over shots...'
 for nevent, evt in enumerate(ds.events()):
 
 
     # different ranks look at different events
     if nevent % size != rank: continue
 
+    if rank == 0: print nevent
+
+    evt_codes = evr(evt)
     cspad_img = cspad_det.calib(evt) # gets the calibrated img
-    xray_on   = (BYKICK_EVR not in evr(evt)) and (BAKICK_EVR not in evr(evt))
-    laser_on  = (LASER_ON_EVR in evr(evt))
+
+    xray_on   = (BYKICK_EVR not in evt_codes) and (BAKICK_EVR not in evt_codes)
+    laser_on  = (LASER_ON_EVR in evt_codes)
 
 
     evtId = evt.get(psana.EventId)
@@ -116,9 +123,9 @@ for nevent, evt in enumerate(ds.events()):
                    'laser_on'     : laser_on,
                    'tt_pos'       : tt_pos(evt),
                    'tt_amp'       : tt_amp(evt),
-                   'tt_nxamp'     : tt_nx_amp(evt),
+                   'tt_fwhm'      : tt_fwhm(evt),
                    'las_stg'      : las_stg(evt),
-                   'delta_t'      : tt_time(evt) } # todo this one obv needs work :)
+                   'delta_t_ps'   : tt_time(evt) } # todo this one obv needs work :)
 
     event_info_list.append(event_info)
 
@@ -139,14 +146,14 @@ for nevent, evt in enumerate(ds.events()):
     # >> every so often, the master pauses to gather all the
     # analyzed data, write it to disk, and send it to lightning
 
-    if (nevent * rank) % UPDATE_FREQ == 0: # dbl check logic
+    if len(event_info_list) % UPDATE_FREQ == 0: # dbl check logic
 
         # first gather ...
-        laser_on_sum_agg = comm.Gather(laser_on_sum, root=0)
-        n_laser_on_agg   = comm.Gather(n_laser_on, root=0)
+        laser_on_sum_agg = comm.gather(laser_on_sum, root=0)
+        n_laser_on_agg   = comm.gather(n_laser_on, root=0)
 
-        laser_off_sum_agg = comm.Gather(laser_off_sum, root=0)
-        n_laser_off_agg   = comm.Gather(n_laser_off, root=0)
+        laser_off_sum_agg = comm.gather(laser_off_sum, root=0)
+        n_laser_off_agg   = comm.gather(n_laser_off, root=0)
 
         info_agg = comm.gather(event_info_list, root=0)
         event_info_list = [] # reset this so it doesn't baloon
@@ -155,9 +162,11 @@ for nevent, evt in enumerate(ds.events()):
         # if we are master
         if rank == 0:
 
+            info_agg = sum(info_agg, []) # flatten
+
             # write small data to disk
             small_data.writerows(info_agg)
-            dts = [ e['delta_t'] for e in info_agg ]
+            dts = [ d['delta_t_ps'] for d in info_agg ]
 
             # compute the values of interest
             laser_on_sum_agg  = np.sum(laser_on_sum_agg, axis=1)

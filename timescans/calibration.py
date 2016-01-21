@@ -85,13 +85,16 @@ def analyze_calibration_run(exp, run, las_delay_pvname, ffb=True,
 
     las_dly = psana.Detector(las_delay_pvname, ds.env())
     tt_edge = psana.Detector('CXI:TTSPEC:FLTPOS', ds.env())
-
+    tt_famp = psana.Detector('CXI:TTSPEC:AMPL', ds.env())
+    tt_fwhm = psana.Detector('CXI:TTSPEC:FLTPOSFWHM', ds.env())
 
     delay_pxl_data = []
     for i,evt in enumerate(ds.events()):
         print "analyzing event: %d\r" % (i+1),
 
-        # >>> TJL note, may want to perform some checks on e.g. TT peak heights, etc
+        # perform some checks on the fit amp and fwhm
+        if (tt_fwhm(evt) > 300.0) or (tt_fwhm(evt) < 50.0): continue
+        if (tt_famp(evt) < 0.05): continue
 
         edge = tt_edge(evt)
         if (px_cutoffs[0] <= edge) and (edge <= px_cutoffs[1]):
@@ -129,9 +132,9 @@ def analyze_calibration_run(exp, run, las_delay_pvname, ffb=True,
     # make a plot
     plt.figure()
     plt.plot(delay_pxl_data[:,0], delay_pxl_data[:,1], '.')
-    #plt.plot(delay_pxl_data[:,0], p(delay_pxl_data[:,1]),'r-')
-    #plt.plot(rmes[:,0], rmes[:,1] - rmes[:,2],'k-')
-    #plt.plot(rmes[:,0], rmes[:,1] + rmes[:,2],'k-')
+    plt.plot(delay_pxl_data[:,0], p(delay_pxl_data[:,1]),'r-')
+    plt.plot(rmes[:,0], rmes[:,1] - rmes[:,2],'k-')
+    plt.plot(rmes[:,0], rmes[:,1] + rmes[:,2],'k-')
 
     plt.xlabel('Edge Position (pixels) [TTSPEC:FLTPOS]')
     plt.ylabel('Laser Delay (ps) [%s]' % las_delay_pvname)
@@ -152,6 +155,6 @@ def analyze_calibration_run(exp, run, las_delay_pvname, ffb=True,
 
 
 if __name__ == '__main__':
-    analyze_calibration_run('cxii2415', 65, 'LAS:FS5:VIT:FS_TGT_TIME_OFFSET', ffb=False)
+    analyze_calibration_run('cxii2415', 65, 'LAS:FS5:VIT:FS_TGT_TIME_DIAL', ffb=False)
     
 
