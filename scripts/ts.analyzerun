@@ -21,14 +21,13 @@ import psana
 import numpy as np
 
 from timescans import algorithms
-from timescans import visualization
 
 
 # ---- parse args
 parser = argparse.ArgumentParser(description='Analyze a single run')
 parser.add_argument('-r', '--run', type=int,
                     help='the run number')
-parser.add_argument('-n', '--no-viz', type=bool, action='store_true',
+parser.add_argument('-n', '--no-viz', action='store_true',
                     default=False, help='disable visualization')
 args = parser.parse_args()
 
@@ -37,38 +36,40 @@ args = parser.parse_args()
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 size = comm.Get_size()
+print "--> started MPI rank %d/%d" % (rank+1, size)
 
 
 # ---- some experiment-specific stuff
-LASER_ON_EVR = 42    # random guess
-XRAY_ON_EVR  = 120   # random guess
-N_BINS       = 101
-UPDATE_FREQ  = 100   # units: shots processed per core
+LASER_ON_EVR  = 183
+LASER_OFF_EVR = 184
+BYKICK_EVR    = 162 # x-ray off
+BAKICK_EVR    = 163 # x-ray off
+N_BINS        = 101
+UPDATE_FREQ   = 100   # units: shots processed per core
 
 
 
 # ---- get calibration data, create detectors
-ds = psana.DataSource('exp=cxij8816:run=%d:dir=/reg/d/ffb/cxi/cxij8816:smd:live')
+ds = psana.DataSource('exp=cxij8816:run=%d:dir=/reg/d/ffb/cxi/cxij8816:smd:live' % args.run)
 
 cspad_det = psana.Detector('ds1', ds.env())
 evr       = psana.Detector('evr0', ds.env())
-tt_opal   = psana.Detector('TSS_OPAL', ds.env())
 las_stg   = psana.Detector('CXI:LAS:MMN:06.RBV', ds.env())
 
-ttOptions = TimeTool.AnalyzeOptions(
-    get_key='TSS_OPAL',
-    eventcode_nobeam=162,
-    calib_poly='0 1 0',
-    sig_roi_x='0 1023',
-    sig_roi_y='425 724',
-    ref_avg_fraction=0.5)
-ttAnalyze = TimeTool.PyAnalyze(ttOptions)
+tt_pos    = psana.Detector('CXI:TTSPEC:FLTPOS', ds.env())
+tt_amp    = psana.Detector('CXI:TTSPEC:AMPL', ds.env())
+tt_nx_amp = psana.Detector('CXI:TTSPEC:AMPLNXT', ds.env())
+tt_time   = psana.Detector('CXI:TTSPEC:FLTPOS_PS', ds.env())
 
-geometry_h5 = h5py.File('/reg/d/psdm/cxi/cxij8816/res/geometry/current.h5')
-q_values    = np.array(geometry_h5['/q_values'])
-phi_values  = np.array(geometry_h5['/phi'])
-mask        = np.array(geometry_h5['/mask'])
-geometry_h5.close()
+# DEAL WITH THIS
+#geometry_h5 = h5py.File('/reg/d/psdm/cxi/cxij8816/res/geometry/current.h5')
+#q_values    = np.array(geometry_h5['/q_values'])
+#phi_values  = np.array(geometry_h5['/phi'])
+#mask        = np.array(geometry_h5['/mask'])
+#geometry_h5.close()
+
+q_values = np.random.randn((32, 185, 388))
+mask     = np.ones((32, 185, 388), dtype=np.int32)
 
 ra = algorithms.RadialAverager(q_values, mask, n_bins=N_BINS)
 
@@ -76,11 +77,16 @@ ra = algorithms.RadialAverager(q_values, mask, n_bins=N_BINS)
 # ---- setup buffers to store data
 if rank == 0:
     smd_file = open('/reg/d/psdm/cxi/cxij8816/res/stats/run%04d.csv' % args.run)
-    fieldnames = ['index', 'fdcl', 'time_s', 'time_ns',
+    fieldnames = ['index', 'fdcl', 'timestamp_s', 'timestamp_ns',
                    'xray_on', 'laser_on',
-                   'tt_pos', 'tt_amp', 'tt_nxamp', 'las_stg', 'delta_t']
+                   'tt_pos', 'tt_amp', 'tt_nxamp', 'las_stg', 'delta_t_ps']
     small_data = csv.DictWriter(csvfile, fieldnames=fieldnames)
     small_data.writeheader()
+
+    if not args.no_viz:
+        from timescans import visualization as viz
+        rpt = RunPlots(args.run, q_values)
+
 
 laser_on_sum  = np.zeros(N_BINS)
 laser_off_sum = np.zeros(N_BINS)
@@ -97,23 +103,22 @@ for nevent, evt in enumerate(ds.events()):
     if nevent % size != rank: continue
 
     cspad_img = cspad_det.calib(evt) # gets the calibrated img
-    xray_on   = (XRAY_ON_EVR in evr(evt))
+    xray_on   = (BYKICK_EVR not in evr(evt)) and (BAKICK_EVR not in evr(evt))
     laser_on  = (LASER_ON_EVR in evr(evt))
 
-    ttdata = ttAnalyze.process(evt)
 
     evtId = evt.get(psana.EventId)
-    event_info = { 'index'    : nevent,
-                   'fdcl'     : evtId.fiducials()
-                   'time_s'   : evtId.time()[0],
-                   'time_ns'  : evtId.time()[1],
-                   'xray_on'  : xray_on,
-                   'laser_on' : laser_on,
-                   'tt_pos'   : ttdata.position_pixel(),
-                   'tt_amp'   : ttdata.amplitude(),
-                   'tt_nxamp' : ttdata.nxt_amplitude(),
-                   'las_stg'  : las_stg(evt),
-                   'delta_t'  : 0.0 } # todo this one obv needs work :)
+    event_info = { 'index'        : nevent,
+                   'fdcl'         : evtId.fiducials(),
+                   'timestamp_s'  : evtId.time()[0],
+                   'timestamp_ns' : evtId.time()[1],
+                   'xray_on'      : xray_on,
+                   'laser_on'     : laser_on,
+                   'tt_pos'       : tt_pos(evt),
+                   'tt_amp'       : tt_amp(evt),
+                   'tt_nxamp'     : tt_nx_amp(evt),
+                   'las_stg'      : las_stg(evt),
+                   'delta_t'      : tt_time(evt) } # todo this one obv needs work :)
 
     event_info_list.append(event_info)
 
@@ -123,7 +128,7 @@ for nevent, evt in enumerate(ds.events()):
         cspad_img[cspad_img < 20.0] = 0.0
         rad_avg = ra(cspad_img)
 
-        if LASER_ON_EVR in evr(evt):
+        if laser_on:
             laser_on_sum  += rad_avg
             n_laser_on    += 1
         else:
@@ -161,10 +166,11 @@ for nevent, evt in enumerate(ds.events()):
             n_laser_off_agg   = np.sum(n_laser_off_agg)
         
             # and send for visualization
-            if not args.no_viz:
-                pass
-                #visualization.las_on_v_off(n_laser_on_agg, laser_on_sum_agg,
-                #                           n_laser_off_agg, laser_off_sum_agg)
+            if (not args.no_viz):
+                # may want to downsample
+                rpt.update_las_on_off(n_laser_on_agg, laser_on_sum_agg,
+                                      n_laser_off_agg, laser_off_sum_agg)
+                rpt.update_dts(dts)
 
 
 smd_file.close() 

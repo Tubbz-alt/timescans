@@ -66,7 +66,8 @@ def fit_errors(x, y, y_hat, bin_size):
     return r_sq, rmes
 
 
-def analyze_calibration_run(exp, run, las_delay_pvname, ffb=True):
+def analyze_calibration_run(exp, run, las_delay_pvname, ffb=True,
+                            px_cutoffs=(200, 800)):
     """
     Analyze a run where the timetool camera is fixed but the laser delay
     changes by a known amount in order to calibrate the TT camera pixel-
@@ -81,18 +82,27 @@ def analyze_calibration_run(exp, run, las_delay_pvname, ffb=True):
     else:
         ds = psana.DataSource('exp=%s:run=%d' % (exp, run))
 
+
     las_dly = psana.Detector(las_delay_pvname, ds.env())
     tt_edge = psana.Detector('CXI:TTSPEC:FLTPOS', ds.env())
 
-    print 'analyzing shots...'    
+
     delay_pxl_data = []
     for i,evt in enumerate(ds.events()):
+        print "analyzing event: %d\r" % (i+1),
+
         # >>> TJL note, may want to perform some checks on e.g. TT peak heights, etc
-        delay_pxl_data.append([ tt_edge(evt), las_dly(evt) ])
-        #if i == 1000: break # debugging
+
+        edge = tt_edge(evt)
+        if (px_cutoffs[0] <= edge) and (edge <= px_cutoffs[1]):
+            delay_pxl_data.append([ tt_edge(evt), las_dly(evt) ])
+
+        #if i == 5000: break # debugging
+
         
     delay_pxl_data = np.array(delay_pxl_data)
-    print "Analyzing %d events" % delay_pxl_data.shape[0]
+    print "Analyzing in-range %d events" % delay_pxl_data.shape[0]
+
 
     # from docs >> fs_result = a + b*x + c*x^2, x is edge position
     fit = np.polyfit(delay_pxl_data[:,0], delay_pxl_data[:,1], 2)
@@ -102,18 +112,40 @@ def analyze_calibration_run(exp, run, las_delay_pvname, ffb=True):
     r_sq, rmes = fit_errors(delay_pxl_data[:,0], delay_pxl_data[:,1], 
                             p(delay_pxl_data[:,1]), 0.0001)
 
+    print "\nFIT RESULTS"
+    print "fs_result = a + b*x + c*x^2,  x is edge position"
+    print "------------------------------------------------"
+    print "a = %f" % a
+    print "b = %f" % b
+    print "c = %f" % c
+    print "R^2 = %f" % r_sq
+    print "------------------------------------------------"
+    print "fit range (tt pixels): %d <> %d" % px_cutoffs
+    print "time range (fs):       %f <> %f" % ( p(px_cutoffs[0]), 
+                                                p(px_cutoffs[1]) )
+    print "------------------------------------------------"
+
+
+    # make a plot
     plt.figure()
     plt.plot(delay_pxl_data[:,0], delay_pxl_data[:,1], '.')
-    plt.plot(delay_pxl_data[:,0], p(delay_pxl_data[:,1]),'r-')
-    plt.plot(rmes[:,0], rmes[:,1] - rmes[:,2],'k-')
-    plt.plot(rmes[:,0], rmes[:,1] + rmes[:,2],'k-')
+    #plt.plot(delay_pxl_data[:,0], p(delay_pxl_data[:,1]),'r-')
+    #plt.plot(rmes[:,0], rmes[:,1] - rmes[:,2],'k-')
+    #plt.plot(rmes[:,0], rmes[:,1] + rmes[:,2],'k-')
+
     plt.xlabel('Edge Position (pixels) [TTSPEC:FLTPOS]')
     plt.ylabel('Laser Delay (ps) [%s]' % las_delay_pvname)
+    plt.xlim([0, 1024])
+
     plt.show()
+
 
     # push results upstream to DAQ config
 
+
     # save results to calib dir
+
+
 
     return
 

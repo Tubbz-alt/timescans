@@ -247,7 +247,7 @@ class Timetool(object):
 
             # TJL note to self: these make the code CXI-specific... :(
             python = "/reg/neh/operator/cxiopr/cxipy/bin/python"
-            script = "/reg/neh/operator/cxiopr/timescans/scripts/ts.analyze_calib_run"
+            script = "/reg/neh/operator/cxiopr/timescans/scripts/ts.calibrun"
             args = "-e %s -r %d -l %s" % (exp, run, self._laser_delay.pvname)
 
             cmd = "%s %s %s" % (python, script, args)
