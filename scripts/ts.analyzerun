@@ -50,8 +50,10 @@ UPDATE_FREQ   = 100   # units: shots processed per core
 
 
 # ---- get calibration data, create detectors
-#ds = psana.DataSource('exp=cxij8816:run=%d:dir=/reg/d/ffb/cxi/cxij8816/xtc:smd:live' % args.run)
-ds = psana.DataSource('exp=cxij8816:run=%d' % args.run)
+try:
+    ds = psana.DataSource('exp=cxij8816:run=%d:dir=/reg/d/ffb/cxi/cxij8816/xtc:smd' % args.run)
+except RuntimeError as e:
+    ds = psana.DataSource('exp=cxij8816:run=%d' % args.run)
 
 cspad_det = psana.Detector('DscCsPad', ds.env())
 evr       = psana.Detector('NoDetector.0:Evr.0', ds.env())
@@ -87,7 +89,7 @@ if rank == 0:
 
     if not args.no_viz:
         from timescans import visualization as viz
-        rpt = viz.RunPlots(args.run, q_values)
+        rpt = viz.RunPlots(args.run, ra.bin_centers)
 
 
 laser_on_sum  = np.zeros(N_BINS)
