@@ -8,7 +8,7 @@ For calibration: 20x steps of 100 fs spacing
 Example
 -------
 >>> # load defaul parameters for CXI from ~/.timescanrc
->>> tt = Timetool.from_rc()
+>>> tt = Timescaner.from_rc()
      
 >>> # for a static run, this is useful for control
 >>> tt.set_delay(0.001)
@@ -65,7 +65,7 @@ def ns_to_mm(time):
     return mm
 
         
-class Timetool(object):
+class Timescaner(object):
     """
     Class for managing the timetool delay.
     
@@ -372,7 +372,7 @@ class Timetool(object):
 
 def _timetool_smoketest():
 
-     tt = Timetool.from_rc()
+     tt = Timescaner.from_rc()
      print "window", tt.tt_window
 
      tt.set_delay(0.001)
@@ -397,10 +397,10 @@ def _rc_smoketest():
                 'LAS:FS5:VIT:FS_TGT_TIME_OFFSET',  # t0_pv_name 
                 'LAS:FS5:VIT:PHASE_LOCKED',        # laser_lock_pv_name
                 42 )   
-     tt = Timetool(*cxi_pvs)
+     tt = Timescaner(*cxi_pvs)
      tt.set_rc()
 
-     tt2 = Timetool.from_rc()
+     tt2 = Timescaner.from_rc()
 
 if __name__ == '__main__':
     _timetool_smoketest()
