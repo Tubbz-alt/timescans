@@ -43,7 +43,7 @@ import numpy as np
 CURSOR_UP_ONE = '\x1b[1A'
 ERASE_LINE = '\x1b[2K'
 
-DEBUG = True
+DEBUG = False
 
 
 def mm_to_ns(path_length):
@@ -81,8 +81,25 @@ class Timescaner(object):
                  laser_delay_pv_name,
                  tt_stage_position_pv_name,
                  t0_pv_name,
-                 laser_lock_pv_name,
-                 eventcode_nobeam):
+                 laser_lock_pv_name):
+        """
+        Create a Timescaner instance, providing control over the timetool
+        and laser delay stages.
+
+        Parameters
+        ----------
+        daq_host : str
+        daq_platform : int
+        laser_delay_pv_name : str
+        tt_stage_position_pv_name : str
+        t0_pv_name : str
+        laser_lock_pv_name : str
+
+        See Also
+        --------
+        Timescaner.from_rc() : function
+            Create a timescaner instance from a file.
+        """
 
 
         self._daq_host = daq_host
@@ -93,7 +110,6 @@ class Timescaner(object):
         self._tt_stage_position  = epics.PV(tt_stage_position_pv_name)
         self._t0                 = epics.PV(t0_pv_name)
         self._laser_lock         = epics.PV(laser_lock_pv_name)
-        self.eventcode_nobeam    = eventcode_nobeam
 
         self.tt_travel_offset    = 0.0
         self.tt_fit_coeff        = np.array([ 0.0, 1.0, 0.0 ])
@@ -109,10 +125,31 @@ class Timescaner(object):
 
 
     @classmethod
-    def from_rc(cls):
+    def from_rc(cls, rc_path=None):
+        """
+        Create a Timescaner instance from a configuration saved in an rc
+        file.
 
-        rc_path = os.path.join(os.environ['HOME'], '.timescanrc')
-        print "\ninitialized from %s" % rc_path
+        Optional Parameters
+        -------------------
+        rc_path : str
+            The rc file to load. If `None`, will look for $HOME/.timescanrc
+
+        Returns
+        -------
+        ts : Timescaner
+            The timescaner instance.
+
+        See Also
+        --------
+        set_rc : function
+            Create a timescaner rc file from current instance/settings.
+        """
+
+
+        if rc_path is None:
+            rc_path = os.path.join(os.environ['HOME'], '.timescanrc')
+            print "\ninitialized from %s" % rc_path
 
         settings = {}
         with open(rc_path, 'r') as f:
@@ -128,8 +165,7 @@ class Timescaner(object):
                        settings['laser_delay_pv_name'],
                        settings['tt_stage_position_pv_name'],
                        settings['t0_pv_name'],
-                       settings['laser_lock_pv_name'],
-                       int(settings['eventcode_nobeam']))
+                       settings['laser_lock_pv_name'])
 
             inst.tt_travel_offset  = float(settings['tt_travel_offset'])
             inst.tt_fit_coeff      = np.fromstring(settings['tt_fit_coeff'].strip('[]'), sep=' ')
@@ -146,7 +182,21 @@ class Timescaner(object):
         return inst
 
 
-    def set_rc(self):
+    def set_rc(self, rc_path=None):
+        """
+        Create a timescan rc file with parameters from the current
+        Timescaner instance.
+
+        Optional Parameters
+        -------------------
+        rc_path : str
+            The rc file to load. If `None`, will look for $HOME/.timescanrc
+
+        See Also
+        --------
+        from_rc : function
+            Load an rc file.
+        """
 
         settings = {
                     'daq_host'                  : self._daq_host,
@@ -155,13 +205,14 @@ class Timescaner(object):
                     'tt_stage_position_pv_name' : self._tt_stage_position.pvname,
                     't0_pv_name'                : self._t0.pvname,
                     'laser_lock_pv_name'        : self._laser_lock.pvname,
-                    'eventcode_nobeam'          : self.eventcode_nobeam,
                     'tt_travel_offset'          : self.tt_travel_offset,
                     'tt_fit_coeff'              : self.tt_fit_coeff,
                     'calibrated'                : self.calibrated
                    }
 
-        rc_path = os.path.join(os.environ['HOME'], '.timescanrc')
+        if rc_path is None:
+            rc_path = os.path.join(os.environ['HOME'], '.timescanrc')
+
         with open(rc_path, 'w') as f:
             for k in settings.keys():
                 f.write('%s = %s\n' % (k, str(settings[k])))
@@ -199,6 +250,11 @@ class Timescaner(object):
         """
         Move both the laser delay and the TT stage for a particular
         delay.
+
+        Parameters
+        ----------
+        delay_in_ns : float
+            Value to set delay to.
         """
 
         old_delay = self._laser_delay.value
@@ -227,6 +283,15 @@ class Timescaner(object):
     def calibrate(self):
         """
         Calibrate the pixel-to-fs conversion.
+
+        This function will perform a scan between -1 ps and +1 ps, taking 1200
+        shots at 21 intermediate timesteps. A psana job will then be launched
+        on the psana cluster to analyze the results and configure both the
+        DAQ and psana calib dir.
+
+        NOTE 1/22/16, TJL
+        >> the part about config the DAQ and psana is currently a lie, coming
+           soon
         """
 
         print ""
@@ -234,10 +299,38 @@ class Timescaner(object):
         print "Calibrating..."
 
         # 120 evts/pt | -1 ps to 1 ps, 100 fs window
-        nevents_per_timestep = 12
-        times = np.linspace(-0.001, 0.001, 21)
+        nevents_per_timestep = 120
+        times_in_ns = np.linspace(-0.001, 0.001, 41)
 
-        run = self.scan_times(times, nevents_per_timestep)
+        daq_config = { 'record' : True,
+                       'events' : nevents_per_timestep,
+                       'controls' : [ (self._laser_delay.pvname,
+                                       self._laser_delay.value) ],
+                       'monitors' : [] # what should be here?
+                      }
+        self.daq.configure(**daq_config)
+        print "> daq configured"
+
+        for cycle, delay in enumerate(times_in_ns):
+
+            print " --> cycle %d / laser delay %f ns / tt stage: STATIC" % (cycle, delay)
+
+            if not DEBUG:
+                self._laser_delay.put(delay)
+
+                # wait until PVs reach the value we want
+                while (np.abs(self._laser_delay.value - delay) > 1e-9):
+                    time.sleep(0.001)
+
+            ctrls = [( self._laser_delay.pvname, delay )]
+            try:
+                self.daq.begin(controls=ctrls)
+                self.daq.end()
+            except KeyboardInterrupt:
+                self.daq.stop()
+
+        self.daq.stop() 
+        self.daq.configure(record=False, events=0)
 
         # >>> now fit the calibration
         #     if we can launch an external process...
@@ -275,6 +368,31 @@ class Timescaner(object):
 
     def scan_range(self, t1, t2, resolution, nevents_per_timestep=100,
                    randomize=False, repeats=1):
+        """
+        Scan a range of equally spaced timepoints.
+
+        Calling this function will take control of the DAQ, timetool stage,
+        and laser delay stage to perform scans as specified by the following
+        parameters.
+
+        Parameters
+        ----------
+        t1, t2 : float
+            The starting and ending times (in ns), respectively for the scan.
+
+        resolution : float
+            The spacing between timepoints (in ns).
+
+        nevents_per_timestep : int
+            The number of shots to take at each timestep.
+
+        randomize : bool
+            If `True`, the order in which the timepoints are visited will be
+            randomized. Useful for avoiding systematic errors due to drift.
+
+        repeats : int
+            The number of times to repeat the scan.
+        """
 
         times = np.arange(t1, t2 + resolution, resolution)
 
@@ -289,8 +407,14 @@ class Timescaner(object):
 
 
     def scan_times(self, times_in_ns, nevents_per_timestep=100,
-                   randomize=False, repeats=1, record=False):
+                   randomize=False, repeats=1, record=True):
         """
+        Scan a list of specific time points, `times_in_ns`.
+
+        Calling this function will take control of the DAQ, timetool stage,
+        and laser delay stage to perform scans as specified by the following
+        parameters.
+
         Parameters
         ----------
         times_in_ns : np.ndarray (or list)
@@ -354,8 +478,15 @@ class Timescaner(object):
             
             ctrls = [( self._laser_delay.pvname,       delay ),
                      ( self._tt_stage_position.pvname, new_tt_pos )]
-            self.daq.begin(controls=ctrls)
-            self.daq.end()
+            try:
+                self.daq.begin(controls=ctrls)
+                self.daq.end()
+            except KeyboardInterrupt:
+                self.daq.stop()
+
+        self.daq.stop()
+        self.daq.configure(record=False, events=0)
+
 
         print "> finished, daq released" 
 

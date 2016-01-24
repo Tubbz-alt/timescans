@@ -28,19 +28,22 @@ class RunPlots(object):
                                    xaxis='q / A^{-1}', yaxis='Intensity',
                                    description='Run %d laser on (purple) / off (teal)' % run_num)
 
-        self.dt_vs_shot = lgn.linestreaming([0.0], max_width=10000,
-                                             xaxis='Shot Index', yaxis='Laser Delay (fs)',
-                                             description='Run %d time delay vs shot index' % run_num)
-        self.hist = lgn.histogram([0.0, 0.0], 100, zoom=True,
-                                  description='Histogram of time delays')
+        #self.dt_vs_shot = lgn.linestreaming([0.0], max_width=10000,
+        #                                     xaxis='Shot Index', yaxis='Laser Delay (fs)',
+        #                                     description='Run %d time delay vs shot index' % run_num)
+        #self.hist = lgn.histogram([0.0, 0.0], 100, zoom=True,
+        #                          description='Histogram of time delays')
+
+        self.image = None
 
         return
 
 
     def update_las_on_off(self, n_laser_on, laser_on_sum, n_laser_off, laser_off_sum):
         self.las_on_off.update([laser_on_sum, laser_off_sum])
-        diff = algorithms.normalize(self.qs, laser_on_sum) - \
-                   algorithms.normalize(self.qs, laser_off_sum)
+        #diff = algorithms.normalize(self.qs, laser_on_sum) - \
+        #           algorithms.normalize(self.qs, laser_off_sum)
+        diff = laser_on_sum / n_laser_on - laser_off_sum / n_laser_off
         self.las_diff.update(diff)
         return
 
@@ -49,6 +52,13 @@ class RunPlots(object):
         self.dt_vs_shot.append(dts)
         self.hist.update(dts)
         return
+
+
+    def update_image(self, imagedata):
+        if self.image is None:
+            self.image = lgn.image(imagedata)
+        else:
+            self.image.update(imagedata)
 
 
 if __name__ == '__main__':

@@ -11,9 +11,9 @@ import argparse
 from timescans import calibration
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-e', '--exp', help='experiment ID (e.g. xpptut15)')
-parser.add_argument('-r', '--run', help='run number', type=int)
-parser.add_argument('-l', '--las', help='laser delay PV')
+parser.add_argument('-e', '--exp', help='experiment ID (e.g. xpptut15)', required=True)
+parser.add_argument('-r', '--run', help='run number', type=int, required=True)
+parser.add_argument('-l', '--las', help='laser delay PV', required=True)
 #parser.add_argument('-n', '--nobeam', type=int,
 #                    help='Dropped x-ray beam event code')
 parser.add_argument('--no-ffb', action='store_true', default=False,

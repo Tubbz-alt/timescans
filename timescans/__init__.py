@@ -1,4 +1,4 @@
 # init
 
-from base import timescans
+from base import Timescaner
 

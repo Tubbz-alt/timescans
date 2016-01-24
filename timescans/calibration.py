@@ -1,4 +1,5 @@
 
+import os
 import numpy as np
 from matplotlib import pyplot as plt
 
@@ -66,7 +67,7 @@ def fit_errors(x, y, y_hat, bin_size):
     return r_sq, rmes
 
 
-def analyze_calibration_run(exp, run, las_delay_pvname, ffb=True,
+def analyze_calibration_run(exp, run, las_delay_pvname, ffb=False,
                             px_cutoffs=(200, 800)):
     """
     Analyze a run where the timetool camera is fixed but the laser delay
@@ -80,7 +81,7 @@ def analyze_calibration_run(exp, run, las_delay_pvname, ffb=True,
         ds = psana.DataSource('exp=%s:run=%d:dir=/reg/d/ffb/%s/%s:smd:live'
                               '' % (exp, run, exp[:3], exp))
     else:
-        ds = psana.DataSource('exp=%s:run=%d' % (exp, run))
+        ds = psana.DataSource('exp=%s:run=%d:smd' % (exp, run))
 
 
     las_dly = psana.Detector(las_delay_pvname, ds.env())
@@ -106,6 +107,11 @@ def analyze_calibration_run(exp, run, las_delay_pvname, ffb=True,
     delay_pxl_data = np.array(delay_pxl_data)
     print "Analyzing in-range %d events" % delay_pxl_data.shape[0]
 
+    out_path = os.path.join(os.environ['HOME'], 
+                            'tt_calib_data_%s_r%d.txt' % (exp, run))
+    print "saving raw calibration data --> %s" % out_path
+    np.savetxt(out_path, delay_pxl_data)
+
 
     # from docs >> fs_result = a + b*x + c*x^2, x is edge position
     fit = np.polyfit(delay_pxl_data[:,0], delay_pxl_data[:,1], 2)
@@ -129,12 +135,14 @@ def analyze_calibration_run(exp, run, las_delay_pvname, ffb=True,
     print "------------------------------------------------"
 
 
+    x = np.linspace(delay_pxl_data[:,0].min(), delay_pxl_data[:,0].max(), 101)
+
     # make a plot
     plt.figure()
     plt.plot(delay_pxl_data[:,0], delay_pxl_data[:,1], '.')
-    plt.plot(delay_pxl_data[:,0], p(delay_pxl_data[:,1]),'r-')
-    plt.plot(rmes[:,0], rmes[:,1] - rmes[:,2],'k-')
-    plt.plot(rmes[:,0], rmes[:,1] + rmes[:,2],'k-')
+    plt.plot(x, p(x),'r-')
+    #plt.plot(rmes[:,0], rmes[:,1] - rmes[:,2],'k-')
+    #plt.plot(rmes[:,0], rmes[:,1] + rmes[:,2],'k-')
 
     plt.xlabel('Edge Position (pixels) [TTSPEC:FLTPOS]')
     plt.ylabel('Laser Delay (ps) [%s]' % las_delay_pvname)

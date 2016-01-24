@@ -15,6 +15,7 @@ TJL 1/13/16
 
 import argparse
 import csv
+import h5py
 from mpi4py import MPI
 
 import psana
@@ -22,6 +23,9 @@ import numpy as np
 
 from timescans import algorithms
 
+import cStringIO
+from matplotlib import pyplot as plt
+import matplotlib.image as mpimg
 
 # ---- parse args
 parser = argparse.ArgumentParser(description='Analyze a single run')
@@ -44,8 +48,8 @@ LASER_ON_EVR  = 183
 LASER_OFF_EVR = 184
 BYKICK_EVR    = 162 # x-ray off
 BAKICK_EVR    = 163 # x-ray off
-N_BINS        = 101
-UPDATE_FREQ   = 100   # units: shots processed per core
+N_BINS        = 301
+UPDATE_FREQ   = 10   # units: shots processed per core
 
 
 
@@ -65,14 +69,11 @@ tt_fwhm   = psana.Detector('CXI:TTSPEC:FLTPOSFWHM', ds.env())
 tt_time   = psana.Detector('CXI:TTSPEC:FLTPOS_PS', ds.env())
 
 # DEAL WITH THIS
-#geometry_h5 = h5py.File('/reg/d/psdm/cxi/cxij8816/res/geometry/current.h5')
-#q_values    = np.array(geometry_h5['/q_values'])
-#phi_values  = np.array(geometry_h5['/phi'])
+geometry_h5 = h5py.File('/reg/d/psdm/cxi/cxij8816/res/geometry/current.h5')
+q_values    = np.array(geometry_h5['/q_21keV_rs'])
 #mask        = np.array(geometry_h5['/mask'])
-#geometry_h5.close()
-
-q_values = np.random.randn(32, 185, 388)
-mask     = np.ones((32, 185, 388), dtype=np.int32)
+mask        = np.load('/reg/d/psdm/cxi/cxij8816/res/mask_run23_v3.npy')
+geometry_h5.close()
 
 ra = algorithms.RadialAverager(q_values, mask, n_bins=N_BINS)
 
@@ -171,9 +172,9 @@ for nevent, evt in enumerate(ds.events()):
             dts = [ d['delta_t_ps'] for d in info_agg ]
 
             # compute the values of interest
-            laser_on_sum_agg  = np.sum(laser_on_sum_agg, axis=1)
+            laser_on_sum_agg  = np.sum(laser_on_sum_agg, axis=0)
             n_laser_on_agg    = np.sum(n_laser_on_agg)
-            laser_off_sum_agg = np.sum(laser_off_sum_agg, axis=1)
+            laser_off_sum_agg = np.sum(laser_off_sum_agg, axis=0)
             n_laser_off_agg   = np.sum(n_laser_off_agg)
         
             # and send for visualization
@@ -181,7 +182,21 @@ for nevent, evt in enumerate(ds.events()):
                 # may want to downsample
                 rpt.update_las_on_off(n_laser_on_agg, laser_on_sum_agg,
                                       n_laser_off_agg, laser_off_sum_agg)
-                rpt.update_dts(dts)
+                # rpt.update_dts(dts) 
+
+                ram = cStringIO.StringIO() 
+                fig = plt.figure()
+                plt.plot(laser_on_sum_agg/n_laser_on_agg, lw=2)
+                plt.plot(laser_off_sum_agg/n_laser_off_agg, lw=2)
+                plt.plot(laser_on_sum_agg/n_laser_on_agg - laser_off_sum_agg/n_laser_off_agg, lw=2)
+                plt.legend(['on', 'off', 'diff'])
+                plt.show()
+                fig.canvas.print_figure(ram)
+
+                ram.seek(0)
+                imagedata = mpimg.imread(ram)
+
+                rpt.update_image(imagedata)
 
 
 smd_file.close() 

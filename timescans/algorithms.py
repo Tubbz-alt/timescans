@@ -93,7 +93,7 @@ def update_average(n, A, B):
         return
         
         
-def normalize(q_values, intensities, q_min=0.5, q_max=3.5):
+def normalize(q_values, intensities, q_min=2.5, q_max=6.5):
     """
     Crop and normalize an I(q) vector st. the area under the curve is one.
     """
