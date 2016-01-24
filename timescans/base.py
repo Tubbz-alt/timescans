@@ -330,6 +330,7 @@ class Timescaner(object):
                 print 'Rcv ctrl-c, interrupting DAQ scan...'
                 self.daq.stop()
 
+        run = self.daq.runnumber()
         self.daq.disconnect()
 
         # >>> now fit the calibration
