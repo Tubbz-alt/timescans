@@ -16,38 +16,57 @@ MIN_RUN      = 37
 
 def submit_job(bsub_command_str, queue='psfehhiprioq'):
 
-    p = subprocess.check_call(['bsub', '-q %s' % queue, 'a mympi -n 12', bsub_command_str],
+    p = subprocess.check_call(['bsub', '-q %s' % queue, '-n 12', bsub_command_str],
                               stdout=subprocess.PIPE)
     if not p == 0:
         print "bsub returned non-zero exit code: there was an error with your job submission!"
     return
 
 
-while True:
+def get_xtc_based_run_list():
+    runs = []
+    xtcs = glob(os.path.join(XTC_DIR, '*.xtc'))
+
+    for xtc in xtcs:
+        run = int( re.search('-r(\d+)-', xtc).group(1) )
+        runs.append(run)
+
+    runs = list(set(runs)) # unique
+    runs = sorted(runs)
+
+    return runs
+
+
+if __name__ == '__main__':
+
+  old_runs = get_xtc_based_run_list()
+
+  while True:
 
     # check to make sure we don't have >6 jobs submitted...
     r = subprocess.Popen(["bjobs | wc -l"], shell=True,
                          stdout=subprocess.PIPE, 
                          stderr=subprocess.PIPE)
-    if len(r.communicate()) > 7:
+    result = r.communicate()[0].strip()
+    if int(result) > 7:
          print '8+ jobs in queue, sleeping...'
          time.sleep(60)
          continue
 
     new_runs = []
-    xtcs = glob(os.path.join(XTC_DIR, '*.xtc'))
-
-    for xtc in xtcs:
-        run = int( re.search('-r(\d+)-', xtc).group(1) )
-        if not os.path.exists( os.path.join(STATS_DIR, 'run%04d.csv' % run) ):
-            if (run not in new_runs) and (run > MIN_RUN):
-                new_runs.append(run)
+    pos_runs = get_xtc_based_run_list()
+    for r in pos_runs:
+        if r not in old_runs:
+            if int(r) > MIN_RUN:
+                new_runs.append(r)
+                old_runs.append(r)
+    print '%d old, %d new runs' % (len(old_runs), len(new_runs))
 
     if len(new_runs) > 0:
         print 'Processing new runs: %s' % (' '.join([str(r) for r in new_runs]))
         for r in new_runs:
             try:
-                submit_job('ts.analyzerun -r %d' % int(r))
+                submit_job('mpirun -n 12 ts.analyzerun -r %d' % int(r))
             except Exception as e:
                 print 'error trying to submit jobs:'
                 print e

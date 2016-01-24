@@ -327,10 +327,10 @@ class Timescaner(object):
                 self.daq.begin(controls=ctrls)
                 self.daq.end()
             except KeyboardInterrupt:
+                print 'Rcv ctrl-c, interrupting DAQ scan...'
                 self.daq.stop()
 
-        self.daq.stop() 
-        self.daq.configure(record=False, events=0)
+        self.daq.disconnect()
 
         # >>> now fit the calibration
         #     if we can launch an external process...
@@ -447,7 +447,7 @@ class Timescaner(object):
         #     to run and what to vary. then we launch an external thread to do
         #     that.
 
-        daq_config = { 'record' : record,
+        daq_config = { 'record' : (record and DEBUG),
                        'events' : nevents_per_timestep,
                        'controls' : [ (self._laser_delay.pvname,
                                        self._laser_delay.value),
@@ -482,15 +482,15 @@ class Timescaner(object):
                 self.daq.begin(controls=ctrls)
                 self.daq.end()
             except KeyboardInterrupt:
+                print 'Rcv crtl-C, interrupting DAQ scan'
                 self.daq.stop()
 
-        self.daq.stop()
-        self.daq.configure(record=False, events=0)
+        rn = self.daq.runnumber()
 
-
+        self.daq.disconnect()
         print "> finished, daq released" 
 
-        return self.daq.runnumber()
+        return rn
 
 
 
