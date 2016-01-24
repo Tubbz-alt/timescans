@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 
 """
-
-
 example usage:
-ts.analyze_calib_run -e cxij8816 -r 44 -l CXI:LAS:MMN:06 -n 162
+ts.analyze_calib_run -e cxij8816 -r 44 -l LAS:FS5:VIT:FS_TGT_TIME_DIAL
 """
 
 import argparse
@@ -14,15 +12,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-e', '--exp', help='experiment ID (e.g. xpptut15)', required=True)
 parser.add_argument('-r', '--run', help='run number', type=int, required=True)
 parser.add_argument('-l', '--las', help='laser delay PV', required=True)
-#parser.add_argument('-n', '--nobeam', type=int,
-#                    help='Dropped x-ray beam event code')
-parser.add_argument('--no-ffb', action='store_true', default=False,
-                    help='force no FFB')
 args = parser.parse_args()
 
-
-calibration.analyze_calibration_run(args.exp,
-                                  args.run,
-                                  args.las,
-                                  ffb=(not args.no_ffb))
+calibration.analyze_calibration_run(args.exp, args.run, args.las)
 

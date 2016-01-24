@@ -47,9 +47,9 @@ def fit_errors(x, y, y_hat, bin_size):
     ssq = lambda x : np.sum(np.square(x))
     
     # global R^2
-    ssreg = ssq(y_hat - np.mean(y))
-    sstot = ssq(y     - np.mean(y))
-    r_sq = ssreg / sstot
+    ssres = ssq(y - y_hat)
+    sstot = ssq(y - np.mean(y))
+    r_sq = 1.0 - ssres / sstot
     
     # per-bin RME
     bins = np.arange(x.min(), x.max()+bin_size*2, bin_size)
@@ -67,8 +67,7 @@ def fit_errors(x, y, y_hat, bin_size):
     return r_sq, rmes
 
 
-def analyze_calibration_run(exp, run, las_delay_pvname, ffb=False,
-                            px_cutoffs=(200, 800)):
+def analyze_calibration_run(exp, run, las_delay_pvname, px_cutoffs=(200, 800)):
     """
     Analyze a run where the timetool camera is fixed but the laser delay
     changes by a known amount in order to calibrate the TT camera pixel-
@@ -76,12 +75,7 @@ def analyze_calibration_run(exp, run, las_delay_pvname, ffb=False,
     """
 
     import psana
-
-    if ffb:
-        ds = psana.DataSource('exp=%s:run=%d:dir=/reg/d/ffb/%s/%s:smd:live'
-                              '' % (exp, run, exp[:3], exp))
-    else:
-        ds = psana.DataSource('exp=%s:run=%d:smd' % (exp, run))
+    ds = psana.DataSource('exp=%s:run=%d:smd' % (exp, run))
 
 
     las_dly = psana.Detector(las_delay_pvname, ds.env())
@@ -115,18 +109,18 @@ def analyze_calibration_run(exp, run, las_delay_pvname, ffb=False,
 
     # from docs >> fs_result = a + b*x + c*x^2, x is edge position
     fit = np.polyfit(delay_pxl_data[:,0], delay_pxl_data[:,1], 2)
-    c, b, a = fit
+    c, b, a = fit * 1000.0
     p = np.poly1d(fit)
 
     r_sq, rmes = fit_errors(delay_pxl_data[:,0], delay_pxl_data[:,1], 
-                            p(delay_pxl_data[:,1]), 0.0001)
+                            p(delay_pxl_data[:,0]), 50)
 
     print "\nFIT RESULTS"
-    print "fs_result = a + b*x + c*x^2,  x is edge position"
+    print "ps_result = a + b*x + c*x^2,  x is edge position"
     print "------------------------------------------------"
-    print "a = %f" % a
-    print "b = %f" % b
-    print "c = %f" % c
+    print "a = %.12f" % a
+    print "b = %.12f" % b
+    print "c = %.12f" % c
     print "R^2 = %f" % r_sq
     print "------------------------------------------------"
     print "fit range (tt pixels): %d <> %d" % px_cutoffs
@@ -141,9 +135,9 @@ def analyze_calibration_run(exp, run, las_delay_pvname, ffb=False,
     plt.figure()
     plt.plot(delay_pxl_data[:,0], delay_pxl_data[:,1], '.')
     plt.plot(x, p(x),'r-')
-    #plt.plot(rmes[:,0], rmes[:,1] - rmes[:,2],'k-')
-    #plt.plot(rmes[:,0], rmes[:,1] + rmes[:,2],'k-')
-
+    plt.plot(rmes[:,0], rmes[:,1] - rmes[:,2]*3,'k-')
+    plt.plot(rmes[:,0], rmes[:,1] + rmes[:,2]*3,'k-')
+    plt.legend(['events', 'fit', '-3 $\sigma$', '+3 $\sigma$'])
     plt.xlabel('Edge Position (pixels) [TTSPEC:FLTPOS]')
     plt.ylabel('Laser Delay (ps) [%s]' % las_delay_pvname)
     plt.xlim([0, 1024])
