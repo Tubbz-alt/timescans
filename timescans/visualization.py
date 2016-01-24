@@ -40,9 +40,7 @@ class RunPlots(object):
 
 
     def update_las_on_off(self, n_laser_on, laser_on_sum, n_laser_off, laser_off_sum):
-        self.las_on_off.update([laser_on_sum, laser_off_sum])
-        #diff = algorithms.normalize(self.qs, laser_on_sum) - \
-        #           algorithms.normalize(self.qs, laser_off_sum)
+        self.las_on_off.update([laser_on_sum/n_laser_on, laser_off_sum/n_laser_off])
         diff = laser_on_sum / n_laser_on - laser_off_sum / n_laser_off
         self.las_diff.update(diff)
         return

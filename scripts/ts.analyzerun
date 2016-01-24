@@ -49,7 +49,7 @@ LASER_OFF_EVR = 184
 BYKICK_EVR    = 162 # x-ray off
 BAKICK_EVR    = 163 # x-ray off
 N_BINS        = 301
-UPDATE_FREQ   = 10   # units: shots processed per core
+UPDATE_FREQ   = 100   # units: shots processed per core
 
 
 
@@ -184,19 +184,18 @@ for nevent, evt in enumerate(ds.events()):
                                       n_laser_off_agg, laser_off_sum_agg)
                 # rpt.update_dts(dts) 
 
-                ram = cStringIO.StringIO() 
-                fig = plt.figure()
-                plt.plot(laser_on_sum_agg/n_laser_on_agg, lw=2)
-                plt.plot(laser_off_sum_agg/n_laser_off_agg, lw=2)
-                plt.plot(laser_on_sum_agg/n_laser_on_agg - laser_off_sum_agg/n_laser_off_agg, lw=2)
-                plt.legend(['on', 'off', 'diff'])
-                plt.show()
-                fig.canvas.print_figure(ram)
-
-                ram.seek(0)
-                imagedata = mpimg.imread(ram)
-
-                rpt.update_image(imagedata)
+                #ram = cStringIO.StringIO() 
+                #fig = plt.figure()
+                #plt.plot(laser_on_sum_agg/n_laser_on_agg, lw=2)
+                #plt.plot(laser_off_sum_agg/n_laser_off_agg, lw=2)
+                #plt.plot(laser_on_sum_agg/n_laser_on_agg - laser_off_sum_agg/n_laser_off_agg, lw=2)
+                #plt.legend(['on', 'off', 'diff'])
+                #plt.show()
+                #fig.canvas.print_figure(ram)
+                #
+                #ram.seek(0)
+                #imagedata = mpimg.imread(ram)
+                #rpt.update_image(imagedata)
 
 
 smd_file.close() 
