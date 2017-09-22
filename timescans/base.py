@@ -448,7 +448,7 @@ class Timescaner(object):
         #     to run and what to vary. then we launch an external thread to do
         #     that.
 
-        daq_config = { 'record' : (record and DEBUG),
+        daq_config = { 'record' : (record and not DEBUG),
                        'events' : nevents_per_timestep,
                        'controls' : [ (self._laser_delay.pvname,
                                        self._laser_delay.value),

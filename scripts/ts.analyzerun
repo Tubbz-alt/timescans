@@ -48,7 +48,7 @@ LASER_ON_EVR  = 183
 LASER_OFF_EVR = 184
 BYKICK_EVR    = 162 # x-ray off
 BAKICK_EVR    = 163 # x-ray off
-N_BINS        = 301
+N_BINS        = 201
 UPDATE_FREQ   = 100   # units: shots processed per core
 
 
@@ -182,7 +182,7 @@ for nevent, evt in enumerate(ds.events()):
                 # may want to downsample
                 rpt.update_las_on_off(n_laser_on_agg, laser_on_sum_agg,
                                       n_laser_off_agg, laser_off_sum_agg)
-                # rpt.update_dts(dts) 
+                rpt.update_dts(dts) 
 
                 #ram = cStringIO.StringIO() 
                 #fig = plt.figure()

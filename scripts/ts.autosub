@@ -50,7 +50,7 @@ if __name__ == '__main__':
     result = r.communicate()[0].strip()
     if int(result) > 7:
          print '8+ jobs in queue, sleeping...'
-         time.sleep(60)
+         time.sleep(15)
          continue
 
     new_runs = []
@@ -71,7 +71,7 @@ if __name__ == '__main__':
                 print 'error trying to submit jobs:'
                 print e
 
-    time.sleep(60)
+    time.sleep(15)
 
 
 
