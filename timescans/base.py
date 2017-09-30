@@ -32,6 +32,7 @@ import time
 import epics
 import subprocess
 import sys
+import threading
 
 try:
     import pydaq
@@ -494,6 +495,67 @@ class Timescaner(object):
         return rn
 
 
+    def _scan_back_and_forth(self, window_size_fs):
+        
+        set_delay = self._laser_delay.value
+        while self._SCAN:
+            if not DEBUG:
+                delay = np.random.uniform(set_delay - window_size_fs/2.0,
+                                          set_delay + window_size_fs/2.0)
+                self._laser_delay.put(delay)
+                while (np.abs(self._laser_delay.value - delay) > 1e-9):
+                    time.sleep(0.001)
+            time.sleep(1.0) # give EPICs a 1 second break, may update this
+                    
+        return
+        
+
+    def get_jitter(self, nevents, window_size_fs=500):
+        """
+        
+        """
+
+        print ""
+        print "="*40
+        print "SCAN REQUESTED\n"
+
+        if (record is False) or DEBUG:
+            print "*** WARNING: not recording!"
+
+        print "> scanning %d fs window for %d events" % (window_size_fs,
+                                                         nevents)
+
+        daq_config = { 'record' : (record and not DEBUG),
+                       'events' : nevents,
+                       'controls' : [],
+                       'monitors' : []
+                      }        
+        self.daq.configure(**daq_config)
+        print "> daq configured"
+      
+
+        # start a thread to do the 
+        initial_delay = self._laser_delay.value
+        t = threading.Thread(target=self._scan_back_and_forth, 
+                             args=(window_size_fs,))
+            
+        try:
+            t.start()
+            self.daq.begin()
+            self.daq.end()
+        except KeyboardInterrupt:
+            print 'Rcv crtl-C, interrupting DAQ scan'
+            self.daq.stop()
+        finally:
+            self._SCAN = False # stops thread
+            self._laser_delay.put(initial_delay)
+            
+        rn = self.daq.runnumber()
+
+        self.daq.disconnect()
+        print "> finished, daq released" 
+
+        return rn
 
 
 # --------------
