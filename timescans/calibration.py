@@ -89,7 +89,7 @@ def analyze_calibration_run(exp, run, las_delay_pvname, px_cutoffs=(200, 800)):
 
         # perform some checks on the fit amp and fwhm
         if (tt_fwhm(evt) > 300.0) or (tt_fwhm(evt) < 50.0): continue
-        if (tt_famp(evt) < 0.05): continue
+        if (tt_famp(evt) < 0.02): continue
 
         edge = tt_edge(evt)
         if (px_cutoffs[0] <= edge) and (edge <= px_cutoffs[1]):
@@ -124,7 +124,7 @@ def analyze_calibration_run(exp, run, las_delay_pvname, px_cutoffs=(200, 800)):
     print "R^2 = %f" % r_sq
     print "------------------------------------------------"
     print "fit range (tt pixels): %d <> %d" % px_cutoffs
-    print "time range (fs):       %f <> %f" % ( p(px_cutoffs[0]), 
+    print "time range (ps):       %f <> %f" % ( p(px_cutoffs[0]), 
                                                 p(px_cutoffs[1]) )
     print "------------------------------------------------"
 
