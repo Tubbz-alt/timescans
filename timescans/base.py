@@ -29,10 +29,16 @@ Example
 
 import os
 import time
-import epics
 import subprocess
 import sys
 import threading
+
+try:
+    import epics
+    _EPICS_IMPORT = True
+except:
+    _EPICS_IMPORT = False
+    print 'warning, EPICS not imported'
 
 try:
     import pydaq
@@ -330,9 +336,9 @@ class Timescaner(object):
             except KeyboardInterrupt:
                 print 'Rcv ctrl-c, interrupting DAQ scan...'
                 self.daq.stop()
-
-        run = self.daq.runnumber()
-        self.daq.disconnect()
+            finally:
+            run = self.daq.runnumber()
+            self.daq.disconnect()
 
         # >>> now fit the calibration
         #     if we can launch an external process...
@@ -500,8 +506,8 @@ class Timescaner(object):
         set_delay = self._laser_delay.value
         while self._SCAN:
             if not DEBUG:
-                delay = np.random.uniform(set_delay - window_size_fs/2.0,
-                                          set_delay + window_size_fs/2.0)
+                delay = np.random.uniform(set_delay - window_size_fs/2.0 * 1e6,
+                                          set_delay + window_size_fs/2.0 * 1e6)
                 self._laser_delay.put(delay)
                 while (np.abs(self._laser_delay.value - delay) > 1e-9):
                     time.sleep(0.001)
@@ -550,10 +556,10 @@ class Timescaner(object):
             self._SCAN = False # stops thread
             self._laser_delay.put(initial_delay)
             
-        rn = self.daq.runnumber()
+            rn = self.daq.runnumber()
 
-        self.daq.disconnect()
-        print "> finished, daq released" 
+            self.daq.disconnect()
+            print "> finished, daq released" 
 
         return rn
 
