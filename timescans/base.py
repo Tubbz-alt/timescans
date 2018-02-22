@@ -336,7 +336,6 @@ class Timescaner(object):
             except KeyboardInterrupt:
                 print 'Rcv ctrl-c, interrupting DAQ scan...'
                 self.daq.stop()
-            finally:
             run = self.daq.runnumber()
             self.daq.disconnect()
 
