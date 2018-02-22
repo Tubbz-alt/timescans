@@ -79,16 +79,22 @@ def analyze_calibration_run(exp, run, las_delay_pvname, px_cutoffs=(200, 800)):
 
 
     las_dly = psana.Detector(las_delay_pvname, ds.env())
-    tt_edge = psana.Detector('CXI:TTSPEC:FLTPOS', ds.env())
-    tt_famp = psana.Detector('CXI:TTSPEC:AMPL', ds.env())
-    tt_fwhm = psana.Detector('CXI:TTSPEC:FLTPOSFWHM', ds.env())
+
+    if exp[:3] == 'cxi':
+        tt_edge = psana.Detector('CXI:TTSPEC:FLTPOS', ds.env())
+        tt_famp = psana.Detector('CXI:TTSPEC:AMPL', ds.env())
+        tt_fwhm = psana.Detector('CXI:TTSPEC:FLTPOSFWHM', ds.env())
+    elif exp[:3] == 'xpp':
+        tt_edge = psana.Detector('XPP:TIMETOOL:FLTPOS', ds.env())
+        tt_famp = psana.Detector('XPP:TIMETOOL:AMPL', ds.env())
+        tt_fwhm = psana.Detector('XPP:TIMETOOL:FLTPOSFWHM', ds.env())
 
     delay_pxl_data = []
     for i,evt in enumerate(ds.events()):
         print "analyzing event: %d\r" % (i+1),
 
         # perform some checks on the fit amp and fwhm
-        if (tt_fwhm(evt) > 300.0) or (tt_fwhm(evt) < 50.0): continue
+        if (tt_fwhm(evt) > 250.0) or (tt_fwhm(evt) < 50.0): continue
         if (tt_famp(evt) < 0.02): continue
 
         edge = tt_edge(evt)

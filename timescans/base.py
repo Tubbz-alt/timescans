@@ -408,7 +408,7 @@ class Timescaner(object):
 
 
     def scan_times(self, times_in_ns, nevents_per_timestep=100,
-                   randomize=False, repeats=1, record=True):
+                   randomize=False, repeats=1, record=True, move_timetool=True):
         """
         Scan a list of specific time points, `times_in_ns`.
 
@@ -439,7 +439,8 @@ class Timescaner(object):
         if (record is False) or DEBUG:
             print "*** WARNING: not recording!"
 
-        times_in_ns = np.repeat(times_in_ns, repeats)
+        #times_in_ns = np.repeat(times_in_ns, repeats)
+        times_in_ns = np.tile(times_in_ns, repeats)
         print "> scanning %d timepoints, %d events per timepoint" % (len(times_in_ns),
                                                                    nevents_per_timestep)
 
@@ -448,12 +449,15 @@ class Timescaner(object):
         #     to run and what to vary. then we launch an external thread to do
         #     that.
 
+        if move_timetool:
+            controls = [ (self._laser_delay.pvname, self._laser_delay.value),
+                         (self._tt_stage_position.pvname, self._tt_stage_position.value) ]
+        else:
+            controls = [ (self._laser_delay.pvname, self._laser_delay.value) ]
+
         daq_config = { 'record' : (record and not DEBUG),
                        'events' : nevents_per_timestep,
-                       'controls' : [ (self._laser_delay.pvname,
-                                       self._laser_delay.value),
-                                      (self._tt_stage_position.pvname,
-                                       self._tt_stage_position.value) ],
+                       'controls' : controls,
                        'monitors' : [] # what should be here?
                       }        
         self.daq.configure(**daq_config)
@@ -463,6 +467,7 @@ class Timescaner(object):
             print "> randomizing timepoints"
             np.random.shuffle(times_in_ns) # in-place
 
+        t0 = time.time()
         for cycle, delay in enumerate(times_in_ns):
 
             new_tt_pos = self._tt_pos_for_delay(delay)
@@ -470,23 +475,35 @@ class Timescaner(object):
            
             if not DEBUG: 
                 self._laser_delay.put(delay)
-                self._tt_stage_position.put(new_tt_pos)
+                if move_timetool:
+                    self._tt_stage_position.put(new_tt_pos)
 
                 # wait until PVs reach the value we want
-                while ( (np.abs(self._laser_delay.value - delay) > 1e-9 ) or \
-                        (np.abs(self._tt_stage_position.value - new_tt_pos) > 1e-9) ):
+                while (np.abs(self._laser_delay.value - delay) > 1e-9 ):
                     time.sleep(0.001)
-            
-            ctrls = [( self._laser_delay.pvname,       delay ),
-                     ( self._tt_stage_position.pvname, new_tt_pos )]
+                if move_timetool:
+                    while (np.abs(self._tt_stage_position.value - new_tt_pos) > 1e-9):
+                        time.sleep(0.001)
+           
+            if move_timetool:
+                ctrls = [( self._laser_delay.pvname,       delay ),
+                         ( self._tt_stage_position.pvname, new_tt_pos )]
+            else:
+                ctrls = [( self._laser_delay.pvname, delay ) ]
+
             try:
                 self.daq.begin(controls=ctrls)
                 self.daq.end()
+                rn = self.daq.runnumber()
             except KeyboardInterrupt:
                 print 'Rcv crtl-C, interrupting DAQ scan'
+                self.daq.disconnect()
                 self.daq.stop()
 
-        rn = self.daq.runnumber()
+            t = time.time()
+            #print 'cycle time:', t-t0
+            t0 = t
+
 
         self.daq.disconnect()
         print "> finished, daq released" 
