@@ -95,13 +95,13 @@ def analyze_calibration_run(exp, run, las_delay_pvname, px_cutoffs=(200, 800)):
 
         # perform some checks on the fit amp and fwhm
         if (tt_fwhm(evt) > 250.0) or (tt_fwhm(evt) < 50.0): continue
-        if (tt_famp(evt) < 0.02): continue
+        if (tt_famp(evt) < 0.03): continue
 
         edge = tt_edge(evt)
         if (px_cutoffs[0] <= edge) and (edge <= px_cutoffs[1]):
             delay_pxl_data.append([ tt_edge(evt), las_dly(evt) ])
 
-        #if i == 5000: break # debugging
+        if i == 15000: break # debugging
 
         
     delay_pxl_data = np.array(delay_pxl_data)
