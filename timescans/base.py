@@ -306,69 +306,40 @@ class Timescaner(object):
         print "Calibrating..."
 
         # 120 evts/pt | -1 ps to 1 ps, 100 fs window
-        nevents_per_timestep = 120
         times_in_ns = np.linspace(-0.001, 0.001, 41)
 
-        daq_config = { 'record' : True,
-                       'events' : nevents_per_timestep,
-                       'controls' : [ (self._laser_delay.pvname,
-                                       self._laser_delay.value) ],
-                       'monitors' : [] # what should be here?
-                      }
-        self.daq.configure(**daq_config)
-        print "> daq configured"
-
-        for cycle, delay in enumerate(times_in_ns):
-
-            print " --> cycle %d / laser delay %f ns / tt stage: STATIC" % (cycle, delay)
-
-            if not DEBUG:
-                self._laser_delay.put(delay)
-
-                # wait until PVs reach the value we want
-                while (np.abs(self._laser_delay.value - delay) > 1e-9):
-                    time.sleep(0.001)
-
-            ctrls = [( self._laser_delay.pvname, delay )]
-            try:
-                self.daq.begin(controls=ctrls)
-                self.daq.end()
-            except KeyboardInterrupt:
-                print 'Rcv ctrl-c, interrupting DAQ scan...'
-                self.daq.stop()
-            run = self.daq.runnumber()
-            self.daq.disconnect()
+        self.scan_times(times_in_ns, nevents_per_timestep=120, move_timetool=False)
 
         # >>> now fit the calibration
         #     if we can launch an external process...
         #     this is messy. in the future if data are available on teh local
         #     machine that would be MUCH better!
-        try:
+        #try:
 
-            # TJL note to self: these make the code CXI-specific... :(
-            python = "/reg/neh/operator/cxiopr/cxipy/bin/python"
-            script = "/reg/neh/operator/cxiopr/timescans/scripts/ts.calibrun"
-            args = "-e %s -r %d -l %s" % (exp, run, self._laser_delay.pvname)
+        #    # TJL note to self: these make the code CXI-specific... :(
+        #    python = "/reg/neh/operator/cxiopr/cxipy/bin/python"
+        #    script = "/reg/neh/operator/cxiopr/timescans/scripts/ts.calibrun"
+        #    args = "-e %s -r %d -l %s" % (exp, run, self._laser_delay.pvname)
 
-            cmd = "%s %s %s" % (python, script, args)
-            print "> Executing: %s" % cmd
-            print "> on a psana machine..."
+        #    cmd = "%s %s %s" % (python, script, args)
+        #    print "> Executing: %s" % cmd
+        #    print "> on a psana machine..."
             
-            ssh = subprocess.Popen(["ssh", "-A", "psdev",
-                                    "ssh", "-A", "psana",
-                                    ] + cmd.split(),
-                                   shell=False,
-                                   stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE)
+        #    ssh = subprocess.Popen(["ssh", "-A", "psdev",
+        #                            "ssh", "-A", "psana",
+        #                            ] + cmd.split(),
+        #                           shell=False,
+        #                           stdout=subprocess.PIPE,
+        #                           stderr=subprocess.PIPE)
 
-            for line in ssh.stdout.readlines() + ssh.stderr.readlines():
-                print '\t* ' + line.strip()
+        #    for line in ssh.stdout.readlines() + ssh.stderr.readlines():
+        #        print '\t* ' + line.strip()
 
-        except:
-            print "Automatic submission of job analyzing run %d failed" % run
-            print "Run:"
-            print "\t", cmd
-            print "on any psana machine"
+        #except:
+        #    print "Automatic submission of job analyzing run %d failed" % run
+        #    print "Run:"
+        #    print "\t", cmd
+        #    print "on any psana machine"
 
         return
 
